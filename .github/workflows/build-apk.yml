@@ -5,11 +5,6 @@ on:
     branches: ["**"]
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      publish_release:
-        description: "Publish the APK as a GitHub Release"
-        type: boolean
-        default: true
 
 permissions:
   contents: write
@@ -56,12 +51,15 @@ jobs:
           path: dist/ai-voice.apk
           if-no-files-found: error
 
+      # Publishes a release straight from the build so there is always a stable
+      # download URL for the APK; the action creates the tag it names.
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('build-{0}', github.run_number) }}
-          name: AI Voice ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('build {0}', github.run_number) }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v1.0.{0}', github.run_number) }}
+          name: AI Voice ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v1.0.{0}', github.run_number) }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
           files: dist/ai-voice.apk
           body: |
             On-device voice dictation. Download `ai-voice.apk` and install it on an
