@@ -1,0 +1,71 @@
+name: Build APK
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish the APK as a GitHub Release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: sdkmanager --install "ndk;27.2.12479018" "cmake;3.22.1"
+
+      # ~181 MiB of GGML weights, restored from cache so only the first run pays
+      # for the download.
+      - name: Cache whisper model
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/assets/models
+          key: whisper-ggml-small-q5_1
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK
+        run: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/ai-voice.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-voice-apk
+          path: dist/ai-voice.apk
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('build-{0}', github.run_number) }}
+          name: AI Voice ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('build {0}', github.run_number) }}
+          files: dist/ai-voice.apk
+          body: |
+            On-device voice dictation. Download `ai-voice.apk` and install it on an
+            arm64 Android 11+ phone (you will need to allow installs from this source).
+
+            Everything runs locally: the Whisper small model is bundled in the APK
+            and no audio or text leaves the device.

@@ -1,0 +1,12 @@
+*.iml
+.gradle/
+.idea/
+build/
+local.properties
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Bundled at build time by the downloadWhisperModel Gradle task; too large for git.
+app/src/main/assets/models/*.bin
+app/src/main/assets/models/*.part

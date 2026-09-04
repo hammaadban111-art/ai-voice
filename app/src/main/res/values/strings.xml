@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AI Voice</string>
+    <string name="tagline">Offline dictation. Tap the bubble, speak, and the text lands in whatever you are typing in.</string>
+
+    <string name="step_model">1. Speech model</string>
+    <string name="step_mic">2. Microphone</string>
+    <string name="step_overlay">3. Floating button</string>
+    <string name="step_accessibility">4. Text insertion</string>
+    <string name="step_language">Dictation language</string>
+
+    <string name="step_mic_detail">Needed to record your voice. Nothing leaves the phone.</string>
+    <string name="step_overlay_detail">Lets the mic button float on top of other apps.</string>
+    <string name="step_accessibility_detail">Lets the app type the transcript into the focused field. Android cannot grant this automatically — turn on “AI Voice” in the Settings screen that opens.</string>
+    <string name="step_language_detail">Auto-detect works well for English. Pin Hindi or Urdu for short phrases, where the two are easy to confuse.</string>
+
+    <string name="model_ready">Bundled Whisper model installed and ready.</string>
+    <string name="model_missing">Model not installed yet.</string>
+    <string name="model_unpacking">Unpacking the speech model (one time, ~181 MiB)…</string>
+
+    <string name="status_granted">Granted</string>
+    <string name="status_needed">Needed</string>
+
+    <string name="action_grant">Grant</string>
+    <string name="action_open_settings">Open Settings</string>
+    <string name="action_start_bubble">Start floating mic</string>
+    <string name="action_stop_bubble">Stop floating mic</string>
+    <string name="action_stop">Stop</string>
+
+    <string name="hint_model">Waiting for the speech model to finish unpacking.</string>
+    <string name="hint_permissions">Grant the microphone and floating-button permissions to continue.</string>
+    <string name="hint_accessibility">Almost there: turn on the accessibility service so transcripts can be typed for you. Without it, text is copied to the clipboard instead.</string>
+    <string name="hint_ready">All set. Start the floating mic, open any app, tap the bubble, and speak.</string>
+    <string name="hint_running">The floating mic is running. Tap it to record, tap again to transcribe. Long-press it to switch language.</string>
+
+    <string name="accessibility_hint">In Settings, open Installed apps (or Downloaded services) and turn on “AI Voice”.</string>
+    <string name="accessibility_description">Types text you dictate into the input field you are focused on. Runs entirely on the device.</string>
+    <string name="accessibility_summary">Inserts dictated text into the focused field</string>
+
+    <string name="notif_channel_name">Dictation</string>
+    <string name="notif_channel_description">Keeps the floating mic and on-device transcription running.</string>
+    <string name="notif_loading">Loading the speech model…</string>
+    <string name="notif_ready">Ready — tap the bubble to dictate</string>
+    <string name="notif_recording">Recording…</string>
+    <string name="notif_transcribing">Transcribing on device…</string>
+    <string name="notif_model_failed">Could not load the speech model</string>
+
+    <string name="toast_still_loading">Still loading the speech model…</string>
+    <string name="toast_transcribing">Transcribing — one moment</string>
+    <string name="toast_too_short">Too short — hold on a little longer</string>
+    <string name="toast_nothing_heard">Didn\'t catch anything</string>
+    <string name="toast_mic_failed">Microphone unavailable</string>
+    <string name="toast_model_failed">Could not install the speech model</string>
+    <string name="toast_a11y_off">Accessibility service is off — copied to clipboard instead</string>
+    <string name="toast_copied_instead">No text field focused — copied to clipboard</string>
+    <string name="toast_finish_setup">Finish the setup steps first</string>
+    <string name="toast_language_switched">Language: %1$s</string>
+
+    <string name="bubble_content_description">Dictation microphone</string>
+</resources>
