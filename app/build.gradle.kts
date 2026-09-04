@@ -71,8 +71,10 @@ android {
         applicationId = "com.aivoice.flow"
         minSdk = 30
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // CI bumps the code per build so a newer release installs over an
+        // older one instead of being rejected as a downgrade.
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        versionName = "1.0.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
 
         buildConfigField("String", "WHISPER_MODEL_ASSET", "\"models/$whisperModelName\"")
         buildConfigField("long", "WHISPER_MODEL_BYTES", "${whisperModelSize}L")
@@ -99,6 +101,23 @@ android {
         }
     }
 
+    // A checked-in self-signed key, so every release the CI publishes carries
+    // the same signature and installs as an update over the previous one. A
+    // per-build debug key would make each release a different signer, which
+    // Android refuses to install over the last.
+    //
+    // This is deliberately not a secret: it exists to make sideloaded updates
+    // work, not to prove authorship. Swap in a keystore from CI secrets before
+    // distributing the app anywhere that matters.
+    signingConfigs {
+        create("sideload") {
+            storeFile = rootProject.file("keystore/aivoice-sideload.jks")
+            storePassword = "aivoice"
+            keyAlias = "aivoice"
+            keyPassword = "aivoice"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -107,8 +126,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key so CI can publish an installable APK.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("sideload")
         }
     }
 

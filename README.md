@@ -74,8 +74,13 @@ Build notes:
   page devices Android 15 introduced.
 - Model assets are stored uncompressed (`noCompress "bin"`) so the first-run copy
   out of the APK is a byte copy rather than a 190 MB inflate.
-- Release builds are signed with the debug key so CI can publish an installable
-  APK; swap in a real keystore before distributing widely.
+- Release builds are signed with the checked-in `keystore/aivoice-sideload.jks`.
+  It is intentionally not a secret: a stable signature is what lets one release
+  install as an update over the previous one, which a per-build debug key
+  cannot do. It proves nothing about authorship — swap in a keystore from CI
+  secrets before distributing the app anywhere that matters.
+- `versionCode` comes from `GITHUB_RUN_NUMBER`, so each published release
+  outranks the last.
 
 ## Licence
 
