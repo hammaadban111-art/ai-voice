@@ -202,6 +202,7 @@ class DictationController(
             if (settings.saveHistory) app.historyStore.append(text)
 
             _state.value = if (inserted) {
+                com.dictate.app.core.DictationTestState.markSuccess()
                 DictationState.Success(text)
             } else {
                 DictationState.Error("Couldn't insert automatically", fallbackText = text)
