@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AiVoice"
+rootProject.name = "Dictate"
 include(":app")

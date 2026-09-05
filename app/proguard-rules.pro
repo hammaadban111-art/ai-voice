@@ -1,5 +1,5 @@
-# Native methods are resolved by name from JNI.
--keepclasseswithmembernames class * {
-    native <methods>;
-}
--keep class com.aivoice.flow.whisper.WhisperNative { *; }
+# OkHttp / Okio use reflection for platform detection; keep as recommended.
+-dontwarn okhttp3.internal.platform.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**

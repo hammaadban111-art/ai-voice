@@ -1,10 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bubble_idle">#FF2E6BE6</color>
-    <color name="bubble_recording">#FFE5484D</color>
-    <color name="bubble_busy">#FFE08C1A</color>
-    <color name="bubble_error">#FF6E6E6E</color>
-    <color name="status_ok">#FF1B8A5A</color>
-    <color name="status_pending">#FFB35309</color>
-    <color name="launcher_background">#FF11203A</color>
+    <color name="ic_launcher_background">#1C1B29</color>
 </resources>

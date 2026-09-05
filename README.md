@@ -1,87 +1,138 @@
-# AI Voice
+# Dictate
 
-Offline voice dictation for Android. Tap a floating mic button on top of any app,
-speak, and the transcript is typed into whatever text field you were using.
+A floating voice-dictation bubble for Android. Tap it over any text field —
+WhatsApp, Messages, Gmail, Chrome, Notes, ChatGPT, whatever — speak, and the
+transcript is typed in at your cursor. Transcription runs on Google's Gemini
+API using **your own API key**; there's no backend, no account, and no
+subscription.
 
-Everything runs on the phone: [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
-compiled with the NDK, the GGML weights bundled inside the APK. No cloud API, no
-account, no network permission.
+## Download
+
+Grab the latest build from **[Releases → Dictate-latest.apk](../../releases/latest)**.
+Every push to this repo rebuilds and republishes that release, so it's
+always up to date.
+
+On your phone: open the Releases page in a browser, download the APK, and
+open it. Android will ask you to allow installs from that source the first
+time — allow it, then install.
+
+This is a **debug-signed** build meant for personal sideloading, not a Play
+Store release.
+
+## Setup
+
+1. Install the APK and open **Dictate**.
+2. Follow the onboarding flow: grant microphone access, turn on the
+   Dictate **Accessibility Service**, allow **display over other apps**,
+   then enable the bubble and try a test dictation.
+3. Open **Settings → Gemini** and paste your own Gemini API key (see below).
+
+### Getting a Gemini API key
+
+1. Go to [Google AI Studio](https://aistudio.google.com/apikey) and create
+   an API key (a free-tier key works — the app is usable for free within
+   your project's Gemini quota).
+2. Copy the key.
+3. In Dictate, go to **Settings → Gemini**, paste the key, tap **Save**,
+   then **Test connection** to confirm it works.
+
+The key is encrypted at rest with **Android Keystore**-backed
+`EncryptedSharedPreferences` (AES-256-GCM) and is never written to disk in
+plaintext, logged, or committed anywhere. Nothing in this repository
+contains a real API key — you always bring your own.
+
+## Using it
+
+- **Tap** the bubble to start dictating; tap **Done** on the pill that
+  appears to transcribe and insert the text, or **Cancel** to discard it.
+- **Long-press** the bubble for push-to-talk: release to finish.
+- **Drag** the bubble anywhere; it snaps to the nearest screen edge.
+- The bubble only appears over editable text fields, and never over
+  password/PIN/OTP fields.
+- Snooze or fully disable the bubble from **Settings → Bubble**.
 
 ## How it works
 
 ```
-overlay tap ──► AudioRecord (16 kHz mono) ──► whisper.cpp (JNI, arm64)
-                                                      │
-                              AccessibilityService ◄──┘  ACTION_SET_TEXT
-                                                          (clipboard + paste fallback)
+floating bubble (WindowManager overlay) ──► AudioRecord (16 kHz mono PCM)
+        │                                          │
+        │                                          ▼
+        │                         Gemini Live "gemini-3.5-transcribe-live"
+        │                         over WebSocket (BidiGenerateContent)
+        │                                          │
+        │                     (falls back to REST "gemini-3.5-transcribe"
+        │                      if the live session drops after audio was
+        │                      already captured, so nothing is lost)
+        ▼                                          │
+AccessibilityService  ◄───────────────────────────┘
+  detects the focused field, inserts the transcript at the cursor
+  (falls back to clipboard + paste if direct insertion isn't supported)
 ```
 
 | Piece | File |
 | --- | --- |
-| JNI bridge to whisper.cpp | `app/src/main/cpp/whisper_jni.cpp` |
-| Native build wiring | `app/src/main/cpp/CMakeLists.txt` |
-| Native context lifecycle | `app/src/main/java/com/aivoice/flow/whisper/WhisperEngine.kt` |
-| Model unpacking from APK assets | `app/src/main/java/com/aivoice/flow/whisper/ModelStore.kt` |
-| Microphone capture | `app/src/main/java/com/aivoice/flow/audio/AudioRecorder.kt` |
-| Floating button | `app/src/main/java/com/aivoice/flow/service/OverlayBubble.kt` |
-| Dictation loop (foreground service) | `app/src/main/java/com/aivoice/flow/service/DictationService.kt` |
-| Text insertion | `app/src/main/java/com/aivoice/flow/service/TextInjector.kt` |
-| Setup / permissions screen | `app/src/main/java/com/aivoice/flow/ui/MainActivity.kt` |
+| Floating bubble + recording pill, state machine | `app/src/main/java/com/dictate/app/overlay/` |
+| Gemini WebSocket + REST clients | `app/src/main/java/com/dictate/app/gemini/` |
+| Microphone capture | `app/src/main/java/com/dictate/app/audio/AudioCapture.kt` |
+| Field detection + text insertion | `app/src/main/java/com/dictate/app/accessibility/` |
+| Encrypted API key storage | `app/src/main/java/com/dictate/app/data/security/SecureKeyStore.kt` |
+| Settings (DataStore) | `app/src/main/java/com/dictate/app/data/settings/SettingsRepository.kt` |
+| Onboarding / Home / Settings UI | `app/src/main/java/com/dictate/app/ui/` |
 
-## Using it
+## Permissions
 
-1. Install the APK and open **AI Voice**.
-2. The bundled speech model unpacks itself on first launch (~181 MiB, one time).
-3. Grant **Microphone** and **Display over other apps**.
-4. Turn on the **AI Voice** accessibility service. Android does not allow an app to
-   grant this itself, so the button opens Settings for you. Without it the app still
-   works — transcripts land on the clipboard instead of being typed.
-5. Tap **Start floating mic**, switch to any app, tap the bubble, speak, tap again.
+| Permission | Why |
+| --- | --- |
+| `RECORD_AUDIO` | Capture your voice during an active dictation only. |
+| `SYSTEM_ALERT_WINDOW` | Draw the floating bubble over other apps. |
+| `BIND_ACCESSIBILITY_SERVICE` | Detect the focused text field and insert the transcript into it. |
+| `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_MICROPHONE` | Keep a dictation alive reliably while recording. |
+| `POST_NOTIFICATIONS` | Show the (minimum-priority) foreground-service notification Android requires. |
+| `INTERNET` | Send captured audio to the Gemini API for transcription. |
+| `VIBRATE` | Tasteful haptic feedback on tap/long-press/done. |
 
-The bubble is draggable, and a long press cycles the dictation language.
+## Privacy
 
-### Language
+- Microphone audio is only captured during an active dictation, streamed
+  straight to Gemini for transcription, and never written to disk.
+- The accessibility service reads only the single focused field needed to
+  detect an editable cursor and insert text — it never reads or transmits
+  the rest of the screen's contents.
+- Password, PIN, OTP, and other sensitive fields are excluded from
+  dictation entirely.
+- Transcript history is off by default; if you turn it on, it's stored
+  locally on-device only and can be deleted at any time from
+  **Settings → Privacy**.
+- No analytics, no ads, no accounts, no backend server — the only network
+  call this app makes is to `generativelanguage.googleapis.com` with your
+  own API key.
 
-`small` multilingual weights (`ggml-small-q5_1`, 5-bit quantised) — chosen over
-`base` because Hindi and Urdu accuracy falls off sharply on the smaller model.
-
-Auto-detect is the default. Hindi and Urdu share most of their vocabulary and
-differ mainly in script, so whisper's detector flips between them on short
-utterances; pin the language in the app (or long-press the bubble) when dictating
-in either.
-
-## Building
-
-Requires JDK 17, the Android SDK, and NDK `27.2.12479018`.
+## Building it yourself
 
 ```bash
-git clone --recursive https://github.com/hammaadban111-art/ai-voice
+git clone https://github.com/hammaadban111-art/ai-voice.git
 cd ai-voice
-./gradlew :app:assembleRelease
+./gradlew clean test lint assembleDebug
 ```
 
-The `downloadWhisperModel` Gradle task fetches the weights into
-`app/src/main/assets/models/` on the first build (they are too large for git) and
-the APK is then fully self-contained. CI does the same in
-`.github/workflows/build-apk.yml`, which publishes the APK as a release asset.
+The debug APK lands at `app/build/outputs/apk/debug/app-debug.apk`.
 
-Build notes:
+Requirements: JDK 17+, Android SDK (compileSdk 34, build-tools 34.0.0).
+Minimum supported OS is Android 13 (API 33).
 
-- arm64 only, `-march=armv8.2-a+fp16+dotprod`. The fp16 and dot-product
-  instructions are what make the quantised matmuls fast enough to feel
-  interactive; they exist on every Cortex-A75-or-later phone.
-- The native library is linked with `-Wl,-z,max-page-size=16384` for the 16 KiB
-  page devices Android 15 introduced.
-- Model assets are stored uncompressed (`noCompress "bin"`) so the first-run copy
-  out of the APK is a byte copy rather than a 190 MB inflate.
-- Release builds are signed with the checked-in `keystore/aivoice-sideload.jks`.
-  It is intentionally not a secret: a stable signature is what lets one release
-  install as an update over the previous one, which a per-build debug key
-  cannot do. It proves nothing about authorship — swap in a keystore from CI
-  secrets before distributing the app anywhere that matters.
-- `versionCode` comes from `GITHUB_RUN_NUMBER`, so each published release
-  outranks the last.
+### Tech stack
 
-## Licence
+Kotlin, Jetpack Compose, Material 3, coroutines, DataStore, OkHttp
+(WebSocket + REST for Gemini), and `androidx.security:security-crypto` for
+Keystore-backed encryption. No native code, no third-party analytics SDKs.
 
-whisper.cpp is vendored as a submodule under its own MIT licence.
+## Notes for OnePlus / OxygenOS
+
+OxygenOS aggressively kills background services on some devices. If the
+bubble stops responding after the screen has been off for a while:
+
+1. Settings → Battery → Dictate → set battery optimization to **Don't
+   optimize** / **Allow background activity**.
+2. Settings → Apps → Dictate → make sure **Autostart** is enabled.
+3. Keep the "Dictation bubble is active" notification enabled — dismissing
+   it (where OxygenOS allows that) can let the OS reclaim the service.
