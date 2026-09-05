@@ -102,8 +102,14 @@ fun HomeScreen(onOpenSettings: () -> Unit, onRedoOnboarding: () -> Unit) {
                 okText = "Allowed",
                 badText = "Not allowed",
             )
+            StatusCard(
+                title = "Bubble service",
+                ok = settings.bubbleEnabled && BubbleOverlayService.isRunning,
+                okText = "Running",
+                badText = if (settings.bubbleEnabled) "Enabled but not running — try toggling it off and on" else "Not running",
+            )
 
-            TextButton(onClick = onRedoOnboarding) { Text("Re-run setup") }
+            TextButton(onClick = onRedoOnboarding) { Text("Run setup again") }
         }
     }
 }

@@ -6,6 +6,8 @@ import androidx.core.content.ContextCompat
 import com.dictate.app.DictateApplication
 import com.dictate.app.accessibility.DictationAccessibilityService
 import com.dictate.app.audio.AudioCapture
+import com.dictate.app.core.DictateLog
+import com.dictate.app.core.DictationTestState
 import com.dictate.app.core.LanguageMode
 import com.dictate.app.gemini.GeminiLiveClient
 import com.dictate.app.gemini.GeminiRestClient
@@ -25,7 +27,9 @@ import kotlinx.coroutines.withContext
  * Owns the Hidden -> Ready -> Connecting -> Recording -> Finalizing ->
  * Inserting -> Success/Error state machine for a single dictation. One
  * instance is shared for the lifetime of [com.dictate.app.overlay.BubbleOverlayService];
- * [isBusy] guards against duplicate recordings from repeated taps.
+ * [isBusy] guards against duplicate recordings from repeated taps, and is
+ * the only thing that decides whether a second AudioRecord/WebSocket pair
+ * could ever be created — the gesture layer never makes that call itself.
  */
 class DictationController(
     private val app: DictateApplication,
@@ -38,6 +42,14 @@ class DictationController(
     private val _state = MutableStateFlow<DictationState>(DictationState.Hidden)
     val state: StateFlow<DictationState> = _state
 
+    private val _amplitude = MutableStateFlow(0f)
+
+    /** Real, live microphone RMS level while [DictationState.Recording], 0 otherwise. */
+    val amplitude: StateFlow<Float> = _amplitude
+
+    /** Is a session already in flight? The gesture layer can check this before even trying. */
+    val isSessionActive: Boolean get() = isBusy
+
     private val committed = StringBuilder()
     private var isBusy = false
     private var liveConnected = false
@@ -45,28 +57,36 @@ class DictationController(
     private var finalizeJob: Job? = null
     private var lastRequest: TranscriptionRequest? = null
 
+    private fun setState(newState: DictationState) {
+        DictateLog.d("state: ${_state.value::class.simpleName} -> ${newState::class.simpleName}")
+        _state.value = newState
+    }
+
     fun show() {
-        if (_state.value is DictationState.Hidden) _state.value = DictationState.Ready
+        if (_state.value is DictationState.Hidden) setState(DictationState.Ready)
     }
 
     fun hide() {
         cancel()
-        _state.value = DictationState.Hidden
+        setState(DictationState.Hidden)
     }
 
     fun startRecording() {
-        if (isBusy) return
+        if (isBusy) {
+            DictateLog.d("startRecording ignored: session already active")
+            return
+        }
         isBusy = true
         committed.clear()
         finishRequested = false
         liveConnected = false
-        _state.value = DictationState.Connecting
+        setState(DictationState.Connecting)
 
         scope.launch {
             val settings = app.settingsRepository.settings.first()
             val apiKey = app.secureKeyStore.getApiKey()
             if (apiKey.isNullOrBlank()) {
-                _state.value = DictationState.Error("Add your Gemini API key in Settings")
+                setState(DictationState.Error("Add your Gemini API key in Settings"))
                 isBusy = false
                 return@launch
             }
@@ -92,8 +112,9 @@ class DictationController(
         val current = _state.value
         if (current !is DictationState.Recording && current !is DictationState.Connecting) return
         finishRequested = true
-        _state.value = DictationState.Finalizing
+        setState(DictationState.Finalizing)
         audioCapture.stop()
+        _amplitude.value = 0f
         liveClient.finish()
         finalizeJob = scope.launch {
             delay(FINALIZE_GRACE_PERIOD_MS)
@@ -108,10 +129,11 @@ class DictationController(
         finalizeJob = null
         audioCapture.stop()
         audioCapture.clearBuffer()
+        _amplitude.value = 0f
         liveClient.close()
         committed.clear()
         isBusy = false
-        if (_state.value != DictationState.Hidden) _state.value = DictationState.Ready
+        if (_state.value != DictationState.Hidden) setState(DictationState.Ready)
     }
 
     private fun onEvent(event: TranscriptionEvent) {
@@ -122,29 +144,30 @@ class DictationController(
                     if (ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) !=
                         PackageManager.PERMISSION_GRANTED
                     ) {
-                        _state.value = DictationState.Error("Microphone permission is required")
+                        setState(DictationState.Error("Microphone permission is required"))
                         isBusy = false
                         liveClient.close()
                         return@launch
                     }
-                    _state.value = DictationState.Recording("")
+                    setState(DictationState.Recording(""))
                     audioCapture.start(
                         scope = scope,
                         onChunk = { buffer, length -> liveClient.sendAudioChunk(buffer, length) },
                         onError = { },
+                        onAmplitude = { level -> _amplitude.value = level },
                     )
                 }
                 is TranscriptionEvent.Partial -> {
                     if (_state.value is DictationState.Recording) {
                         val preview = (committed.toString() + " " + event.text).trim()
-                        _state.value = DictationState.Recording(preview)
+                        setState(DictationState.Recording(preview))
                     }
                 }
                 is TranscriptionEvent.Final -> {
                     if (committed.isNotEmpty()) committed.append(' ')
                     committed.append(event.text)
                     if (_state.value is DictationState.Recording || _state.value is DictationState.Finalizing) {
-                        _state.value = DictationState.Recording(committed.toString())
+                        setState(DictationState.Recording(committed.toString()))
                     }
                 }
                 is TranscriptionEvent.Error -> {
@@ -153,7 +176,7 @@ class DictationController(
                         finalizeWithRestFallback()
                     } else if (!liveConnected) {
                         isBusy = false
-                        _state.value = DictationState.Error(event.message)
+                        setState(DictationState.Error(event.message))
                     }
                 }
                 TranscriptionEvent.Closed -> {
@@ -181,14 +204,14 @@ class DictationController(
         val request = lastRequest
         val pcm = audioCapture.bufferedPcm
         if (request == null || pcm.isEmpty()) {
-            _state.value = DictationState.Error("No speech captured")
+            setState(DictationState.Error("No speech captured"))
             isBusy = false
             return
         }
         scope.launch {
             val result = withContext(Dispatchers.IO) { restClient.transcribe(pcm, request) }
             result.onSuccess { insertResult(it) }.onFailure {
-                _state.value = DictationState.Error(it.message ?: "Transcription failed")
+                setState(DictationState.Error(it.message ?: "Transcription failed"))
                 isBusy = false
             }
         }
@@ -196,17 +219,19 @@ class DictationController(
 
     private fun insertResult(text: String) {
         scope.launch {
-            _state.value = DictationState.Inserting
+            setState(DictationState.Inserting)
             val inserted = DictationAccessibilityService.instance?.insertTranscript(text) ?: false
             val settings = app.settingsRepository.settings.first()
             if (settings.saveHistory) app.historyStore.append(text)
 
-            _state.value = if (inserted) {
-                com.dictate.app.core.DictationTestState.markSuccess()
-                DictationState.Success(text)
-            } else {
-                DictationState.Error("Couldn't insert automatically", fallbackText = text)
-            }
+            setState(
+                if (inserted) {
+                    DictationTestState.markSuccess()
+                    DictationState.Success(text)
+                } else {
+                    DictationState.Error("Couldn't insert automatically", fallbackText = text)
+                },
+            )
             isBusy = false
             audioCapture.clearBuffer()
         }

@@ -35,6 +35,8 @@ data class DictateSettings(
     val liveModelOverride: String = GeminiModels.LIVE_TRANSCRIBE,
     val restModelOverride: String = GeminiModels.REST_TRANSCRIBE,
     val diagnosticsEnabled: Boolean = false,
+    // Onboarding
+    val onboardingComplete: Boolean = false,
 ) {
     val isSnoozed: Boolean get() = System.currentTimeMillis() < snoozeUntilEpochMs
 
@@ -65,6 +67,7 @@ class SettingsRepository(private val context: Context) {
             liveModelOverride = prefs[Keys.LIVE_MODEL] ?: GeminiModels.LIVE_TRANSCRIBE,
             restModelOverride = prefs[Keys.REST_MODEL] ?: GeminiModels.REST_TRANSCRIBE,
             diagnosticsEnabled = prefs[Keys.DIAGNOSTICS] ?: false,
+            onboardingComplete = prefs[Keys.ONBOARDING_COMPLETE] ?: false,
         )
     }
 
@@ -90,6 +93,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setRestModelOverride(model: String) = edit { it[Keys.REST_MODEL] = model }
     suspend fun setDiagnosticsEnabled(enabled: Boolean) = edit { it[Keys.DIAGNOSTICS] = enabled }
 
+    suspend fun setOnboardingComplete(complete: Boolean) = edit { it[Keys.ONBOARDING_COMPLETE] = complete }
+
     suspend fun resetToDefaults() = context.dataStore.edit { it.clear() }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
@@ -112,5 +117,6 @@ class SettingsRepository(private val context: Context) {
         val LIVE_MODEL = stringPreferencesKey("live_model_override")
         val REST_MODEL = stringPreferencesKey("rest_model_override")
         val DIAGNOSTICS = booleanPreferencesKey("diagnostics_enabled")
+        val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
     }
 }

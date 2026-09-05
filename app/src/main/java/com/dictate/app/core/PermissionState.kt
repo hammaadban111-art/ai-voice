@@ -1,5 +1,7 @@
 package com.dictate.app.core
 
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.provider.Settings
@@ -7,10 +9,27 @@ import android.view.accessibility.AccessibilityManager
 import androidx.core.content.ContextCompat
 import com.dictate.app.accessibility.DictationAccessibilityService
 
+/**
+ * Every permission/feature status check in the app goes through here, and
+ * every one of them re-derives the answer from the actual Android/system
+ * API on each call — nothing is cached, and nothing is inferred from
+ * whether the user merely opened a Settings screen. This is deliberate:
+ * an earlier version short-circuited the accessibility check with an
+ * in-process "is my Service object currently alive" flag, which could
+ * disagree with Settings' own answer for a window after the user toggles
+ * the service off (the OS doesn't always tear the Service down the
+ * instant the toggle flips), producing exactly the kind of "onboarding
+ * says enabled, Home says disabled" inconsistency this object exists to
+ * prevent. [AccessibilityManager.getEnabledAccessibilityServiceList] is
+ * the OS's own authoritative answer, so that's the only thing consulted.
+ */
 object PermissionState {
 
-    private fun expectedServiceId(context: Context) =
-        "${context.packageName}/${DictationAccessibilityService::class.java.name}"
+    private fun expectedComponent(context: Context) =
+        ComponentName(context.packageName, DictationAccessibilityService::class.java.name)
+
+    private fun componentOf(info: AccessibilityServiceInfo): ComponentName? =
+        info.resolveInfo?.serviceInfo?.let { ComponentName(it.packageName, it.name) }
 
     fun hasMicrophone(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) ==
@@ -25,13 +44,11 @@ object PermissionState {
     fun canDrawOverlays(context: Context): Boolean = Settings.canDrawOverlays(context)
 
     fun isAccessibilityServiceEnabled(context: Context): Boolean {
-        if (DictationAccessibilityService.isEnabled) return true
-        val enabledServices = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-        ) ?: return false
-        val expected = expectedServiceId(context)
-        return enabledServices.split(':').any { it.equals(expected, ignoreCase = true) }
+        val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
+            ?: return false
+        val expected = expectedComponent(context)
+        return manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            .any { componentOf(it) == expected }
     }
 
     /**
@@ -43,11 +60,10 @@ object PermissionState {
      * the user having already visited Accessibility settings once.
      */
     fun isAccessibilityServiceInstalled(context: Context): Boolean {
-        if (DictationAccessibilityService.isEnabled) return true
         val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
             ?: return false
-        val expected = expectedServiceId(context)
-        return manager.installedAccessibilityServiceList.any { it.id.equals(expected, ignoreCase = true) }
+        val expected = expectedComponent(context)
+        return manager.installedAccessibilityServiceList.any { componentOf(it) == expected }
     }
 
     fun allGranted(context: Context): Boolean =

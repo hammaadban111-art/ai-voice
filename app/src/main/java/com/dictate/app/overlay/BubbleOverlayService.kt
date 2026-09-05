@@ -42,32 +42,36 @@ import com.dictate.app.MainActivity
 import com.dictate.app.R
 import com.dictate.app.accessibility.FieldFocusTracker
 import com.dictate.app.asDictateApp
+import com.dictate.app.core.BubbleVisibilityPolicy
+import com.dictate.app.core.DictateLog
+import com.dictate.app.core.GestureAction
+import com.dictate.app.core.GestureClassifier
 import com.dictate.app.data.settings.DictateSettings
 import com.dictate.app.ui.theme.DictateTheme
-import kotlin.math.abs
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /**
- * Hosts the floating dictation bubble as two [TYPE_APPLICATION_OVERLAY]
- * windows — a small draggable circle and, while a dictation is in
- * progress, an expanded pill — and runs as a foreground service (type
- * `microphone`) so Android does not tear the recording down mid-utterance.
+ * Hosts the floating dictation bubble as a *single* [WindowManager] overlay
+ * window and runs as a foreground service (type `microphone`) so Android
+ * does not tear the recording down mid-utterance.
  *
- * Two separate overlay windows are used deliberately: the bubble needs a
- * raw [View.OnTouchListener] to distinguish drag/tap/long-press, and
- * installing that on the same view as the pill's Compose buttons would
- * swallow their click events before Compose's gesture system ever sees them.
+ * Deliberately one window, not two: the compact bubble and the expanded
+ * recording pill are mutually exclusive in the same Compose tree (never
+ * both present), so a raw [View.OnTouchListener] used to drive the
+ * bubble's drag/tap/long-press gestures can never end up sitting on top
+ * of — and swallowing touches meant for — the pill's own Cancel/Done/Paste
+ * buttons. [isPillShaped] is the single switch both the renderer and the
+ * touch listener consult, so they can never disagree about which mode is
+ * currently showing.
  */
 class BubbleOverlayService : LifecycleService() {
 
     private lateinit var windowManager: WindowManager
     private lateinit var controller: DictationController
-    private lateinit var bubbleParams: WindowManager.LayoutParams
-    private lateinit var pillParams: WindowManager.LayoutParams
-    private var bubbleView: ComposeView? = null
-    private var pillView: ComposeView? = null
+    private lateinit var overlayParams: WindowManager.LayoutParams
+    private var overlayView: ComposeView? = null
     private val overlayOwner = OverlayLifecycleOwner()
 
     @Volatile private var hapticsEnabled = true
@@ -79,9 +83,11 @@ class BubbleOverlayService : LifecycleService() {
         overlayOwner.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
-        addOverlayViews()
+        addOverlayView()
         observeHaptics()
         observeAutoStop()
+        isRunning = true
+        DictateLog.d("BubbleOverlayService created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -95,149 +101,159 @@ class BubbleOverlayService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         controller.hide()
-        bubbleView?.let { runCatching { windowManager.removeView(it) } }
-        pillView?.let { runCatching { windowManager.removeView(it) } }
+        overlayView?.let { runCatching { windowManager.removeView(it) } }
         overlayOwner.onDestroy()
         super.onDestroy()
+        DictateLog.d("BubbleOverlayService destroyed")
     }
 
-    // --------------------------------------------------------------- views
+    // --------------------------------------------------------------- view
 
-    private fun baseLayoutParams(): WindowManager.LayoutParams {
+    private fun addOverlayView() {
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
-        return WindowManager.LayoutParams(
+        overlayParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             overlayType,
+            // FLAG_NOT_FOCUSABLE is load-bearing: this window must never be
+            // able to steal focus (or the keyboard) away from the text
+            // field the user is actually typing into.
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
             PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.TOP or Gravity.START }
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 600
+        }
+
+        val view = ComposeView(this).apply {
+            setViewTreeLifecycleOwner(overlayOwner)
+            setViewTreeViewModelStoreOwner(overlayOwner)
+            setViewTreeSavedStateRegistryOwner(overlayOwner)
+            setContent { OverlayContent() }
+            setOnTouchListener(OverlayTouchListener())
+        }
+        overlayView = view
+        windowManager.addView(view, overlayParams)
+
+        // WRAP_CONTENT means the window resizes itself when the pill (wider
+        // than the bubble) appears; keep it fully on-screen either way.
+        view.viewTreeObserver.addOnGlobalLayoutListener { clampToScreen(view) }
     }
 
-    private fun addOverlayViews() {
-        bubbleParams = baseLayoutParams().apply { x = 0; y = 600 }
-        pillParams = baseLayoutParams().apply { x = 0; y = 600 }
-
-        val bubble = ComposeView(this).attachToOverlayLifecycle().apply {
-            setContent { BubbleWindowContent() }
-            setOnTouchListener(BubbleTouchListener())
+    private fun clampToScreen(view: View) {
+        if (view.width == 0 || view.height == 0) return
+        val metrics = resources.displayMetrics
+        val maxX = (metrics.widthPixels - view.width).coerceAtLeast(0)
+        val maxY = (metrics.heightPixels - view.height).coerceAtLeast(0)
+        val clampedX = overlayParams.x.coerceIn(0, maxX)
+        val clampedY = overlayParams.y.coerceIn(0, maxY)
+        if (clampedX != overlayParams.x || clampedY != overlayParams.y) {
+            overlayParams.x = clampedX
+            overlayParams.y = clampedY
+            runCatching { windowManager.updateViewLayout(view, overlayParams) }
         }
-        bubbleView = bubble
-        windowManager.addView(bubble, bubbleParams)
-
-        val pill = ComposeView(this).attachToOverlayLifecycle().apply {
-            setContent { PillWindowContent() }
-        }
-        pillView = pill
-        windowManager.addView(pill, pillParams)
-    }
-
-    private fun ComposeView.attachToOverlayLifecycle(): ComposeView = apply {
-        setViewTreeLifecycleOwner(overlayOwner)
-        setViewTreeViewModelStoreOwner(overlayOwner)
-        setViewTreeSavedStateRegistryOwner(overlayOwner)
     }
 
     @Composable
-    private fun BubbleWindowContent() {
+    private fun OverlayContent() {
         val app = application.asDictateApp()
         val settings by app.settingsRepository.settings.collectAsState(initial = DictateSettings())
         val focus by FieldFocusTracker.state.collectAsState()
         val dictationState by controller.state.collectAsState()
-        val sessionActive = dictationState !is DictationState.Hidden && dictationState !is DictationState.Ready
-        val visible = !sessionActive && settings.bubbleEnabled && !settings.isSnoozed && focus.editableFieldActive
+        val amplitude by controller.amplitude.collectAsState()
+
+        val sessionActive = isPillShaped(dictationState)
+        val visible = BubbleVisibilityPolicy.shouldShowAnything(
+            sessionActive = sessionActive,
+            bubbleFeatureEnabled = settings.bubbleEnabled,
+            snoozed = settings.isSnoozed,
+            editableFieldActive = focus.editableFieldActive,
+        )
+        val showPill = BubbleVisibilityPolicy.shouldShowAsPill(sessionActive)
 
         DictateTheme {
             AnimatedVisibility(visible = visible, enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut()) {
-                CollapsedBubble(state = dictationState, sizeDp = settings.bubbleSizeDp)
+                if (showPill) {
+                    RecordingPill(
+                        state = dictationState,
+                        amplitude = amplitude,
+                        onCancel = { haptic(); controller.cancel() },
+                        onDone = { haptic(); controller.stopAndFinish() },
+                        onPaste = (dictationState as? DictationState.Error)?.fallbackText?.let { text ->
+                            { copyToClipboard(text); controller.cancel() }
+                        },
+                    )
+                } else {
+                    CollapsedBubble(state = dictationState, sizeDp = settings.bubbleSizeDp)
+                }
             }
         }
-        SideEffect { bubbleView?.alpha = settings.bubbleOpacityPercent / 100f }
+        SideEffect { overlayView?.alpha = settings.bubbleOpacityPercent / 100f }
     }
 
-    @Composable
-    private fun PillWindowContent() {
-        val dictationState by controller.state.collectAsState()
-        val sessionActive = dictationState !is DictationState.Hidden && dictationState !is DictationState.Ready
+    // ------------------------------------------------------------ gesture
 
-        DictateTheme {
-            AnimatedVisibility(visible = sessionActive, enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut()) {
-                RecordingPill(
-                    state = dictationState,
-                    onCancel = { haptic(); controller.cancel() },
-                    onDone = { haptic(); controller.stopAndFinish() },
-                    onPaste = (dictationState as? DictationState.Error)?.fallbackText?.let { text ->
-                        { copyToClipboard(text); controller.cancel() }
-                    },
-                )
-            }
-        }
-    }
-
-    // ------------------------------------------------------------ gestures
-
-    private fun beginDictation() {
-        pillParams.x = bubbleParams.x
-        pillParams.y = bubbleParams.y
-        runCatching { pillView?.let { windowManager.updateViewLayout(it, pillParams) } }
-        controller.startRecording()
-    }
-
-    private inner class BubbleTouchListener : View.OnTouchListener {
-        private var initialX = 0
-        private var initialY = 0
-        private var initialTouchX = 0f
-        private var initialTouchY = 0f
-        private var dragging = false
-        private var longPressFired = false
+    private inner class OverlayTouchListener : View.OnTouchListener {
+        private val classifier = GestureClassifier(ViewConfiguration.get(this@BubbleOverlayService).scaledTouchSlop)
         private val handler = Handler(Looper.getMainLooper())
-        private val touchSlop = ViewConfiguration.get(this@BubbleOverlayService).scaledTouchSlop
         private val longPressRunnable = Runnable {
-            longPressFired = true
-            haptic()
-            beginDictation()
+            if (classifier.canConfirmLongPress()) {
+                classifier.confirmLongPress()
+                DictateLog.d("gesture: long-press confirmed")
+                haptic()
+                controller.startRecording()
+            }
         }
 
         override fun onTouch(v: View, event: MotionEvent): Boolean {
+            // While the pill is showing, this is Compose's territory: its
+            // Cancel/Done/Paste buttons need real click events, not a
+            // listener here consuming everything before Compose sees it.
+            if (isPillShaped(controller.state.value)) return false
+
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    initialX = bubbleParams.x
-                    initialY = bubbleParams.y
-                    initialTouchX = event.rawX
-                    initialTouchY = event.rawY
-                    dragging = false
-                    longPressFired = false
+                    classifier.onDown(event.rawX, event.rawY)
                     handler.postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout().toLong())
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - initialTouchX
-                    val dy = event.rawY - initialTouchY
-                    if (!dragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
-                        dragging = true
-                        handler.removeCallbacks(longPressRunnable)
-                    }
-                    if (dragging) {
-                        bubbleParams.x = initialX + dx.toInt()
-                        bubbleParams.y = initialY + dy.toInt()
-                        runCatching { windowManager.updateViewLayout(v, bubbleParams) }
+                    when (val action = classifier.onMove(event.rawX, event.rawY)) {
+                        GestureAction.DragStarted -> handler.removeCallbacks(longPressRunnable)
+                        is GestureAction.DragMoved -> {
+                            overlayParams.x += action.dx
+                            overlayParams.y += action.dy
+                            runCatching { windowManager.updateViewLayout(v, overlayParams) }
+                        }
+                        else -> Unit
                     }
                     return true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     handler.removeCallbacks(longPressRunnable)
-                    when {
-                        dragging -> snapToNearestEdge(v)
-                        longPressFired -> { haptic(); controller.stopAndFinish() }
-                        else -> { haptic(); beginDictation() }
+                    when (classifier.onUp()) {
+                        GestureAction.DragEnded -> snapToNearestEdge(v)
+                        GestureAction.LongPressEnded -> {
+                            DictateLog.d("gesture: long-press release -> stopAndFinish")
+                            haptic()
+                            controller.stopAndFinish()
+                        }
+                        GestureAction.Tap -> {
+                            DictateLog.d("gesture: tap -> startRecording")
+                            haptic()
+                            controller.startRecording()
+                        }
+                        else -> Unit
                     }
                     return true
                 }
@@ -248,20 +264,20 @@ class BubbleOverlayService : LifecycleService() {
         private fun snapToNearestEdge(view: View) {
             val metrics = resources.displayMetrics
             val bubbleWidth = view.width.takeIf { it > 0 } ?: 150
-            val targetX = if (bubbleParams.x + bubbleWidth / 2 < metrics.widthPixels / 2) {
+            val targetX = if (overlayParams.x + bubbleWidth / 2 < metrics.widthPixels / 2) {
                 0
             } else {
                 metrics.widthPixels - bubbleWidth
             }
             val maxY = (metrics.heightPixels - view.height).coerceAtLeast(0)
-            val targetY = bubbleParams.y.coerceIn(0, maxY)
+            val targetY = overlayParams.y.coerceIn(0, maxY)
 
-            ValueAnimator.ofInt(bubbleParams.x, targetX).apply {
+            ValueAnimator.ofInt(overlayParams.x, targetX).apply {
                 duration = 220
                 addUpdateListener {
-                    bubbleParams.x = it.animatedValue as Int
-                    bubbleParams.y = targetY
-                    runCatching { windowManager.updateViewLayout(view, bubbleParams) }
+                    overlayParams.x = it.animatedValue as Int
+                    overlayParams.y = targetY
+                    runCatching { windowManager.updateViewLayout(view, overlayParams) }
                 }
                 start()
             }
@@ -338,6 +354,14 @@ class BubbleOverlayService : LifecycleService() {
     companion object {
         private const val CHANNEL_ID = "dictation_bubble"
         private const val NOTIFICATION_ID = 42
+
+        /** The actual, live state of the service — not merely whether the setting says it should be. */
+        var isRunning: Boolean = false
+            private set
+
+        /** True for every state the pill (not the plain bubble) represents. Shared by the renderer and the gesture listener so they never disagree. */
+        fun isPillShaped(state: DictationState): Boolean =
+            state !is DictationState.Hidden && state !is DictationState.Ready
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, BubbleOverlayService::class.java))

@@ -1,10 +1,6 @@
 package com.dictate.app.overlay
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -78,6 +74,7 @@ private fun bubbleColor(state: DictationState): Color = when (state) {
 @Composable
 fun RecordingPill(
     state: DictationState,
+    amplitude: Float,
     onCancel: () -> Unit,
     onDone: () -> Unit,
     onPaste: (() -> Unit)?,
@@ -109,7 +106,7 @@ fun RecordingPill(
             }
 
             IconAction(Icons.Filled.Close, "Cancel", Color.Gray, onCancel)
-            WaveformIndicator(active = state is DictationState.Recording)
+            WaveformIndicator(active = state is DictationState.Recording, amplitude = amplitude)
             when (state) {
                 is DictationState.Finalizing, is DictationState.Inserting ->
                     CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
@@ -131,26 +128,34 @@ private fun IconAction(icon: androidx.compose.ui.graphics.vector.ImageVector, la
     }
 }
 
+/**
+ * Bars driven by the actual measured microphone RMS level (see
+ * [com.dictate.app.audio.AudioCapture.rmsAmplitude]), not a canned loop —
+ * so the user can tell at a glance whether the mic is really picking up
+ * their voice. Each bar applies a slightly different gain so the row
+ * reads as a waveform rather than one flat block moving in lockstep.
+ */
 @Composable
-private fun WaveformIndicator(active: Boolean) {
-    val transition = rememberInfiniteTransition(label = "waveform")
+private fun WaveformIndicator(active: Boolean, amplitude: Float) {
     Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-        repeat(4) { index ->
-            val heightFraction by transition.animateFloat(
-                initialValue = 0.3f,
-                targetValue = if (active) 1f else 0.3f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(durationMillis = 280 + index * 60, easing = LinearEasing),
-                    repeatMode = RepeatMode.Reverse,
-                ),
+        val gains = listOf(0.8f, 1.15f, 1.3f, 0.95f)
+        gains.forEachIndexed { index, gain ->
+            val restingHeight = 0.15f
+            val target = if (active) (amplitude * gain * BOOST).coerceIn(restingHeight, 1f) else restingHeight
+            val heightFraction by animateFloatAsState(
+                targetValue = target,
+                animationSpec = tween(durationMillis = 100),
                 label = "bar$index",
             )
             Spacer(
                 modifier = Modifier
                     .width(3.dp)
-                    .height((18.dp * heightFraction))
+                    .height(18.dp * heightFraction)
                     .background(DictateAccent, RoundedCornerShape(2.dp)),
             )
         }
     }
 }
+
+/** Normal speech RMS rarely nears full scale; boost so real levels read clearly on a 4-bar meter. */
+private const val BOOST = 3.5f

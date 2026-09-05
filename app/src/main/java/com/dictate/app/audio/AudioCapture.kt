@@ -8,6 +8,7 @@ import android.media.MediaRecorder
 import androidx.annotation.RequiresPermission
 import com.dictate.app.core.AudioConfig
 import java.io.ByteArrayOutputStream
+import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,7 +31,12 @@ class AudioCapture {
 
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    fun start(scope: CoroutineScope, onChunk: (ByteArray, Int) -> Unit, onError: (Throwable) -> Unit) {
+    fun start(
+        scope: CoroutineScope,
+        onChunk: (ByteArray, Int) -> Unit,
+        onError: (Throwable) -> Unit,
+        onAmplitude: (Float) -> Unit = {},
+    ) {
         val minBufferSize = AudioRecord.getMinBufferSize(
             AudioConfig.SAMPLE_RATE_HZ,
             AudioFormat.CHANNEL_IN_MONO,
@@ -66,6 +72,7 @@ class AudioCapture {
                 if (read > 0) {
                     synchronized(this@AudioCapture) { fullBuffer.write(chunk, 0, read) }
                     onChunk(chunk, read)
+                    onAmplitude(rmsAmplitude(chunk, read))
                 } else if (read < 0) {
                     onError(IllegalStateException("AudioRecord read error: $read"))
                     break
@@ -89,5 +96,24 @@ class AudioCapture {
     @Synchronized
     fun clearBuffer() {
         fullBuffer.reset()
+    }
+
+    companion object {
+        /** RMS of a little-endian 16-bit PCM chunk, normalized to [0, 1]. */
+        internal fun rmsAmplitude(pcm: ByteArray, length: Int): Float {
+            if (length < 2) return 0f
+            var sumOfSquares = 0.0
+            var sampleCount = 0
+            var i = 0
+            while (i + 1 < length) {
+                val sample = ((pcm[i + 1].toInt() shl 8) or (pcm[i].toInt() and 0xFF)).toShort()
+                sumOfSquares += (sample * sample).toDouble()
+                i += 2
+                sampleCount++
+            }
+            if (sampleCount == 0) return 0f
+            val rms = sqrt(sumOfSquares / sampleCount)
+            return (rms / 32768.0).toFloat().coerceIn(0f, 1f)
+        }
     }
 }
