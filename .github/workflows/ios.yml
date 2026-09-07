@@ -100,33 +100,59 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          # Names that say which phone they are for, because the two files sit
+          # side by side on a release page and an .ipa and an .apk look alike
+          # on a small screen.
+          mkdir -p dist
+          cp ios/build/VoiceAppV4-unsigned.ipa dist/VoiceAppV4-iPhone-unsigned.ipa
+          cp android/VoiceAppV4-4.1.3.apk      dist/VoiceAppV4-Android.apk
+
           notes=$(cat <<'EOF'
-          Latest build, rebuilt on every push.
+          Rebuilt on every push. Two files, one per phone.
 
-          - **VoiceAppV4-unsigned.ipa** — iPhone. Unsigned on purpose: sign it with
-            SideStore, AltStore, Sideloadly or Feather. See `docs/SIDELOADING.md`.
-          - **VoiceAppV4-4.1.3.apk** — Android. Install it directly, nothing else needed.
+          **Android — `VoiceAppV4-Android.apk`**
+          Download it and open it. That is the whole process.
 
-          Neither file is signed by Apple or Google, so both are sideload-only.
+          **iPhone — `VoiceAppV4-iPhone-unsigned.ipa`**
+          This one cannot be installed by opening it. iOS refuses to install an
+          .ipa from Files, Safari, WhatsApp or AirDrop, so it has to go through a
+          signing tool — SideStore, AltStore, Sideloadly or Feather. See
+          `docs/SIDELOADING.md`.
+
+          To put dictation on an iPhone without any of that, send the web app
+          instead: https://hammaadban111-art.github.io/ai-voice/ — open in Safari,
+          Share, Add to Home Screen.
           EOF
           )
+
           if gh release view latest >/dev/null 2>&1; then
             gh release edit latest \
               --title "Voice App V4 — latest build" \
               --notes "$notes" \
               --target "$GITHUB_SHA"
-            gh release upload latest \
-              ios/build/VoiceAppV4-unsigned.ipa \
-              android/VoiceAppV4-4.1.3.apk \
-              --clobber
           else
             gh release create latest \
               --title "Voice App V4 — latest build" \
               --notes "$notes" \
-              --prerelease \
-              --target "$GITHUB_SHA" \
-              ios/build/VoiceAppV4-unsigned.ipa \
-              android/VoiceAppV4-4.1.3.apk
+              --target "$GITHUB_SHA"
           fi
-          echo "iPhone: https://github.com/$GITHUB_REPOSITORY/releases/download/latest/VoiceAppV4-unsigned.ipa"
-          echo "Android: https://github.com/$GITHUB_REPOSITORY/releases/download/latest/VoiceAppV4-4.1.3.apk"
+
+          gh release upload latest \
+            dist/VoiceAppV4-iPhone-unsigned.ipa \
+            dist/VoiceAppV4-Android.apk \
+            --clobber
+
+          # Anything else on the release is from a build that no longer exists —
+          # two files that look installable but are not is exactly how the wrong
+          # one gets sent to someone.
+          gh release view latest --json assets --jq '.assets[].name' | while read -r asset; do
+            case "$asset" in
+              VoiceAppV4-iPhone-unsigned.ipa|VoiceAppV4-Android.apk) ;;
+              *) echo "removing stale asset: $asset"; gh release delete-asset latest "$asset" --yes ;;
+            esac
+          done
+
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/latest"
+          echo "Android: $base/VoiceAppV4-Android.apk"
+          echo "iPhone:  $base/VoiceAppV4-iPhone-unsigned.ipa"

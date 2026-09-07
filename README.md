@@ -63,7 +63,11 @@ mic key tap ──► AVAudioEngine (16 kHz mono PCM)
 **You do not need a Mac to get a build.** Every push compiles the app on a macOS
 runner and publishes an unsigned `.ipa` you can download straight onto the phone:
 
-**[Download VoiceAppV4-unsigned.ipa](https://github.com/hammaadban111-art/ai-voice/releases/download/latest/VoiceAppV4-unsigned.ipa)**
+**[Download VoiceAppV4-iPhone-unsigned.ipa](https://github.com/hammaadban111-art/ai-voice/releases/download/latest/VoiceAppV4-iPhone-unsigned.ipa)**
+
+That file is not installable by tapping it. iOS will not install a loose `.ipa`
+from Files, WhatsApp, AirDrop or a cable — it has to be signed onto the specific
+phone first.
 
 Sign it with SideStore, AltStore, Sideloadly or Feather —
 [`docs/SIDELOADING.md`](docs/SIDELOADING.md) compares them and explains why ESign

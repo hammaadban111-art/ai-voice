@@ -4,11 +4,22 @@ CI builds an **unsigned `.ipa`** on every push. Unsigned is deliberate: the
 signature depends on whose phone the app is going on, and every tool below takes
 a plain `.ipa` and signs it with your own identity.
 
+## First, the thing that catches everyone out
+
+An `.ipa` cannot be installed by opening it. Sending it to a phone over WhatsApp,
+AirDrop, email or a cable and tapping it does nothing — iOS has no installer for
+a loose `.ipa`, and Files will just sit there. It only becomes an app after a
+signing tool puts a signature on it, on the phone it is going to run on.
+
+If the goal is to get dictation onto someone else's iPhone without any of that,
+send them the web app instead: <https://hammaadban111-art.github.io/ai-voice/> —
+Safari, Share, Add to Home Screen, done.
+
 ## Getting the .ipa
 
 Tap this on the phone itself:
 
-**https://github.com/hammaadban111-art/ai-voice/releases/download/latest/VoiceAppV4-unsigned.ipa**
+**https://github.com/hammaadban111-art/ai-voice/releases/download/latest/VoiceAppV4-iPhone-unsigned.ipa**
 
 It is a plain file on a stable URL — no login, no zip to unpack, and it works in
 a phone browser. Every push rebuilds it and replaces the file at that same link,
@@ -54,7 +65,7 @@ Two things worth knowing before choosing:
    steps — the mechanism changes often enough that copying it here would go
    stale).
 2. On the phone: open SideStore, sign in with an Apple ID, tap **+**, pick
-   `VoiceAppV4-unsigned.ipa`.
+   `VoiceAppV4-iPhone-unsigned.ipa`.
 3. Enable **background refresh** in SideStore so it re-signs before the seven
    days run out. As long as the phone sees Wi-Fi about once a week, the app
    keeps working and nobody has to do anything.
