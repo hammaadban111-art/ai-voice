@@ -7,8 +7,10 @@ The shipped build, kept here so it is one click away.
 
 ## Installing
 
-1. Open the link above on the phone and download it (on a computer, click the
-   file, then **Download**).
+1. On the phone, tap
+   **[this direct download](https://github.com/hammaadban111-art/ai-voice/releases/download/latest/VoiceAppV4-4.1.3.apk)**
+   — it is the same file as above, served as a release asset so a phone browser
+   saves it straight to Downloads instead of showing a code viewer.
 2. Open the downloaded file. Android will ask to allow installs from your
    browser or file manager the first time — allow it, then tap **Install**.
 3. Open **Voice App V4** and work through the three setup steps.

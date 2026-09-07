@@ -61,11 +61,14 @@ mic key tap ──► AVAudioEngine (16 kHz mono PCM)
 ```
 
 **You do not need a Mac to get a build.** Every push compiles the app on a macOS
-runner and publishes an unsigned `.ipa`: repo → **Actions** → *Build iOS app* →
-newest run → **Artifacts**. Sign it with SideStore, AltStore, Sideloadly or
-Feather — [`docs/SIDELOADING.md`](docs/SIDELOADING.md) compares them and explains
-why ESign is no longer one of the options. To build it yourself in Xcode instead,
-see [`docs/INSTALL-ios.md`](docs/INSTALL-ios.md).
+runner and publishes an unsigned `.ipa` you can download straight onto the phone:
+
+**[Download VoiceAppV4-unsigned.ipa](https://github.com/hammaadban111-art/ai-voice/releases/download/latest/VoiceAppV4-unsigned.ipa)**
+
+Sign it with SideStore, AltStore, Sideloadly or Feather —
+[`docs/SIDELOADING.md`](docs/SIDELOADING.md) compares them and explains why ESign
+is no longer one of the options. To build it yourself in Xcode instead, see
+[`docs/INSTALL-ios.md`](docs/INSTALL-ios.md).
 
 ### Feature parity
 

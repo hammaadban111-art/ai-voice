@@ -6,10 +6,17 @@ a plain `.ipa` and signs it with your own identity.
 
 ## Getting the .ipa
 
-1. Repo → **Actions** → **Build iOS app** → newest run.
-2. Scroll to **Artifacts** → download **VoiceAppV4-unsigned-ipa**.
-3. Unzip it — GitHub wraps artifacts in a zip, so you get
-   `VoiceAppV4-unsigned.ipa` inside.
+Tap this on the phone itself:
+
+**https://github.com/hammaadban111-art/ai-voice/releases/download/latest/VoiceAppV4-unsigned.ipa**
+
+It is a plain file on a stable URL — no login, no zip to unpack, and it works in
+a phone browser. Every push rebuilds it and replaces the file at that same link,
+so it is always the newest build.
+
+(The same run also leaves the build under **Actions → Build iOS app →
+Artifacts**, but that copy is a zip behind a GitHub login, which is awkward on a
+phone. Use the link above.)
 
 Nothing else needs a Mac from here on, unless the tool you pick does.
 

@@ -19,6 +19,9 @@ on:
       - "ios/**"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
@@ -87,3 +90,40 @@ jobs:
           path: ios/build/VoiceAppV4-unsigned.ipa
           if-no-files-found: error
           retention-days: 90
+
+      # An Actions artifact is a zip behind a login, which a phone browser
+      # cannot usefully open. A release asset is a plain file on a stable URL
+      # that anyone can tap, so that is what the install instructions point at.
+      - name: Publish the downloadable release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes=$(cat <<'EOF'
+          Latest build, rebuilt on every push.
+
+          - **VoiceAppV4-unsigned.ipa** — iPhone. Unsigned on purpose: sign it with
+            SideStore, AltStore, Sideloadly or Feather. See `docs/SIDELOADING.md`.
+          - **VoiceAppV4-4.1.3.apk** — Android. Install it directly, nothing else needed.
+
+          Neither file is signed by Apple or Google, so both are sideload-only.
+          EOF
+          )
+          if gh release view latest >/dev/null 2>&1; then
+            gh release edit latest --notes "$notes" --target "$GITHUB_SHA"
+            gh release upload latest \
+              ios/build/VoiceAppV4-unsigned.ipa \
+              android/VoiceAppV4-4.1.3.apk \
+              --clobber
+          else
+            gh release create latest \
+              --title "Voice App V4 — latest build" \
+              --notes "$notes" \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              ios/build/VoiceAppV4-unsigned.ipa \
+              android/VoiceAppV4-4.1.3.apk
+          fi
+          echo "iPhone: https://github.com/$GITHUB_REPOSITORY/releases/download/latest/VoiceAppV4-unsigned.ipa"
+          echo "Android: https://github.com/$GITHUB_REPOSITORY/releases/download/latest/VoiceAppV4-4.1.3.apk"
