@@ -1,0 +1,96 @@
+name: Build iOS app
+
+# Compiles the app and spits out an unsigned .ipa.
+#
+# Unsigned is deliberate: signing is the part that depends on whose phone it is
+# going on, so the artifact here is the payload that AltStore, SideStore,
+# Sideloadly, Feather or a paid certificate can all sign afterwards.
+
+on:
+  push:
+    branches:
+      - main
+      - claude/ios-voice-dictation-replica-xl16wg
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode_16.2.app
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Regenerate the project
+        working-directory: ios
+        run: python3 Tools/generate_xcodeproj.py
+
+      # Builds for the simulator first: it type-checks every line without
+      # needing a signing identity, so a compile error is reported here rather
+      # than hiding behind a provisioning failure.
+      - name: Build (simulator)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project VoiceAppV4.xcodeproj \
+            -scheme VoiceAppV4 \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/sim \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Archive (device, unsigned)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project VoiceAppV4.xcodeproj \
+            -scheme VoiceAppV4 \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/VoiceAppV4.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            archive
+
+      # An .ipa is just a zip with the .app inside a Payload/ directory. Doing
+      # it by hand avoids -exportArchive, which insists on a signing identity.
+      - name: Package unsigned .ipa
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          mkdir -p build/Payload
+          cp -R "build/VoiceAppV4.xcarchive/Products/Applications/Voice App V4.app" build/Payload/
+          cd build
+          zip -qry VoiceAppV4-unsigned.ipa Payload
+          rm -rf Payload
+          ls -lh VoiceAppV4-unsigned.ipa
+          echo "--- bundle contents ---"
+          unzip -l VoiceAppV4-unsigned.ipa | grep -E "Info.plist|appex|Voice App V4$" | head -20
+
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceAppV4-unsigned-ipa
+          path: ios/build/VoiceAppV4-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 90
