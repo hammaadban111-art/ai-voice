@@ -1,0 +1,16 @@
+{
+  "name": "Voice App V4",
+  "short_name": "Voice App V4",
+  "description": "Talk, and Gemini writes it down. Tap Copy and paste it anywhere.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#11203A",
+  "theme_color": "#11203A",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

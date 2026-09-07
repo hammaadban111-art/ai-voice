@@ -4,12 +4,30 @@ Dictation that follows you into every app. Tap a mic, talk, and the cleaned-up
 text lands at your cursor — in a chat box, a search field, a code editor,
 wherever you were typing. Transcription runs on Google Gemini.
 
-Two builds live here:
+Three builds live here:
 
 | | What | Where |
 | --- | --- | --- |
 | **Android** | The shipped app, ready to install | [`android/VoiceAppV4-4.1.3.apk`](android/VoiceAppV4-4.1.3.apk) |
 | **iOS** | A one-to-one replica, source to build in Xcode | [`ios/`](ios/) |
+| **Web** | Same app as a web page — the free way onto an iPhone | [`web/`](web/) · [open it](https://hammaadban111-art.github.io/ai-voice/) |
+
+### Which one do I want on an iPhone?
+
+iOS has no free, permanent way to install a native app. Sideloading with a free
+Apple ID expires after **7 days** and needs a Mac every time; TestFlight and the
+App Store both need the $99/year developer account. So:
+
+| Method | Free | Simple | Expires | Types into other apps |
+| --- | --- | --- | --- | --- |
+| Sideload (AltStore / Xcode) | ✅ | ❌ a Mac every 7 days | 7 days | ✅ |
+| TestFlight | ❌ $99/yr | ✅ one tap | 90 days | ✅ |
+| **[Web app](web/)** | ✅ | ✅ tap link → Add to Home Screen | **never** | ❌ copy-paste |
+
+The web build is the one to hand someone who just wants it to work: open the
+link in Safari, Share › **Add to Home Screen**, done. It transcribes with the
+same model and the same prompts; the only difference is that the text lands in
+the app and you tap **Copy**, rather than being typed straight into WhatsApp.
 
 ## Android
 

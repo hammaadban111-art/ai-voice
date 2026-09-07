@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#11203A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Voice App V4">
+<title>Voice App V4</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #10131a;
+    --muted: #5f6673;
+    --line: #e2e5ea;
+    --idle: #2e6be6;
+    --recording: #e5484d;
+    --busy: #e08c1a;
+    --ok: #1b8a5a;
+    --pending: #b35309;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0f14;
+      --card: #161a21;
+      --text: #f2f4f7;
+      --muted: #98a1af;
+      --line: #262c36;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    display: flex; flex-direction: column;
+  }
+  header {
+    padding: 14px 18px 10px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  header h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
+  .icon-btn {
+    border: 0; background: transparent; color: var(--muted);
+    font-size: 22px; padding: 6px 8px; border-radius: 10px; cursor: pointer;
+  }
+  main { flex: 1; overflow-y: auto; padding: 0 18px 20px; -webkit-overflow-scrolling: touch; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 16px; margin-bottom: 14px;
+  }
+  .transcript {
+    min-height: 34vh; width: 100%; border: 0; resize: none; outline: none;
+    background: transparent; color: var(--text); font: inherit; line-height: 1.5;
+  }
+  .transcript::placeholder { color: var(--muted); opacity: .6; }
+
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  button.action {
+    flex: 1; min-width: 120px; padding: 11px 14px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+    font: inherit; font-weight: 500; cursor: pointer;
+  }
+  button.action:active { opacity: .6; }
+  button.action.primary { background: var(--idle); border-color: var(--idle); color: #fff; }
+  button.action:disabled { opacity: .4; }
+
+  .mic-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 6px 0 4px; }
+  #mic {
+    width: 84px; height: 84px; border-radius: 50%; border: 0;
+    background: var(--idle); color: #fff; cursor: pointer;
+    display: grid; place-items: center;
+    box-shadow: 0 6px 18px rgba(0,0,0,.18);
+    transition: background .15s ease, transform .06s linear;
+  }
+  #mic svg { width: 34px; height: 34px; fill: #fff; }
+  #mic.recording { background: var(--recording); }
+  #mic.busy { background: var(--busy); }
+  #mic.error { background: #6e6e6e; }
+  #status { color: var(--muted); font-size: 14px; text-align: center; min-height: 20px; }
+  #status.bad { color: var(--pending); }
+  #status.good { color: var(--ok); }
+  #interim { color: var(--muted); font-size: 14px; text-align: center; min-height: 18px; }
+
+  label.field { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
+  input[type=text], input[type=password], select, textarea.plain {
+    width: 100%; padding: 10px 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit;
+  }
+  .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .chip {
+    padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font-size: 14px; cursor: pointer;
+  }
+  .chip.on { background: var(--idle); border-color: var(--idle); color: #fff; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button {
+    flex: 1; padding: 9px; border: 0; background: var(--bg);
+    color: var(--text); font: inherit; cursor: pointer;
+  }
+  .seg button.on { background: var(--idle); color: #fff; }
+  h2 { font-size: 15px; margin: 0 0 6px; }
+  .entry { border-top: 1px solid var(--line); padding: 10px 0; }
+  .entry:first-of-type { border-top: 0; }
+  .entry time { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Voice App V4</h1>
+  <div>
+    <button class="icon-btn" id="tab-history" title="History">🕘</button>
+    <button class="icon-btn" id="tab-settings" title="Settings">⚙️</button>
+  </div>
+</header>
+
+<main>
+  <!-- ---------------- dictate ---------------- -->
+  <section id="view-dictate">
+    <div class="card">
+      <textarea class="transcript" id="text" placeholder="Your words land here." autocapitalize="sentences"></textarea>
+    </div>
+
+    <div class="mic-wrap">
+      <button id="mic" aria-label="Dictate">
+        <svg viewBox="0 0 24 24" id="mic-icon" aria-hidden="true">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+        </svg>
+      </button>
+      <div id="status">Tap the mic and talk.</div>
+      <div id="interim"></div>
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <button class="action primary" id="copy">Copy</button>
+      <button class="action" id="clear">Clear</button>
+    </div>
+    <p class="hint" id="paste-hint">Copy, then paste into WhatsApp, Notes, anywhere.</p>
+  </section>
+
+  <!-- ---------------- settings ---------------- -->
+  <section id="view-settings" hidden>
+    <div class="card">
+      <h2>Gemini API key</h2>
+      <label class="field" for="key">Key</label>
+      <input type="password" id="key" placeholder="AIza…" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <div class="row" style="margin-top:10px">
+        <button class="action" id="key-show">Show key</button>
+        <button class="action" id="key-test">Test connection</button>
+        <button class="action primary" id="key-save">Save key</button>
+      </div>
+      <p class="hint" id="key-status">Stored only on this phone, in this browser.</p>
+      <p class="hint">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
+    </div>
+
+    <div class="card">
+      <h2>Style</h2>
+      <div class="seg" id="style-seg">
+        <button data-style="smart" class="on">Smart</button>
+        <button data-style="raw">Raw</button>
+      </div>
+      <p class="hint" id="style-hint"></p>
+    </div>
+
+    <div class="card">
+      <h2>Language</h2>
+      <p class="hint">Pick every language you dictate in.</p>
+      <div class="chips" id="langs"></div>
+    </div>
+
+    <div class="card">
+      <h2>Custom vocabulary</h2>
+      <p class="hint">Names, jargon and acronyms Gemini should recognise. One per line.</p>
+      <textarea class="plain" id="vocab" rows="4" spellcheck="false"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>History</h2>
+      <div class="row">
+        <button class="action" id="history-toggle">Keep history: on</button>
+        <button class="action" id="history-clear">Clear history</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------------- history ---------------- -->
+  <section id="view-history" hidden>
+    <div class="card" id="history-list"></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+/* ---------------------------------------------------------------------------
+ * Voice App V4 — web build.
+ *
+ * Same pipeline as the Android and iOS apps: capture 16 kHz mono PCM, wrap it
+ * in a WAV header, send it to Gemini with the same instruction, insert the
+ * cleaned-up text. What a browser cannot do is type into another app, so the
+ * last step is the clipboard — which is exactly what the Android build falls
+ * back to when its accessibility service is off.
+ * ------------------------------------------------------------------------- */
+
+const MODEL = "gemini-3.5-transcribe";
+const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/" + MODEL + ":generateContent";
+const SAMPLE_RATE = 16000;
+const MIN_SAMPLES = SAMPLE_RATE * 0.3;   // under ~0.3 s is a mis-tap
+const MAX_SECONDS = 120;
+
+const LANGUAGES = [
+  ["en-US", "English (US)"], ["en-GB", "English (UK)"], ["ur-PK", "Urdu"], ["hi-IN", "Hindi"],
+  ["ar-EG", "Arabic"], ["zh-CN", "Chinese"], ["nl-NL", "Dutch"], ["fr-FR", "French"],
+  ["de-DE", "German"], ["id-ID", "Indonesian"], ["it-IT", "Italian"], ["ja-JP", "Japanese"],
+  ["ko-KR", "Korean"], ["pl-PL", "Polish"], ["pt-BR", "Portuguese"], ["ru-RU", "Russian"],
+  ["es-ES", "Spanish"], ["es-419", "Spanish (LatAm)"], ["sv-SE", "Swedish"], ["tr-TR", "Turkish"],
+  ["vi-VN", "Vietnamese"],
+];
+
+const STYLE_TEXT = {
+  smart: "Removes filler words, resolves spoken corrections and adds natural punctuation and capitalisation.",
+  raw: "Writes exactly what you said, including hesitations and false starts.",
+};
+
+// -- settings ---------------------------------------------------------------
+
+const DEFAULTS = {
+  apiKey: "",
+  style: "smart",
+  languageCodes: ["en-US"],
+  customVocabulary: [],
+  historyEnabled: true,
+};
+
+function load() {
+  try {
+    return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem("voiceappv4_settings") || "{}"));
+  } catch (e) {
+    return Object.assign({}, DEFAULTS);
+  }
+}
+function save() {
+  try { localStorage.setItem("voiceappv4_settings", JSON.stringify(settings)); } catch (e) {}
+}
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem("voiceappv4_history") || "[]"); } catch (e) { return []; }
+}
+function saveHistory(list) {
+  try { localStorage.setItem("voiceappv4_history", JSON.stringify(list.slice(0, 200))); } catch (e) {}
+}
+
+let settings = load();
+let history = loadHistory();
+
+// -- elements ---------------------------------------------------------------
+
+const $ = (id) => document.getElementById(id);
+const mic = $("mic"), statusEl = $("status"), interimEl = $("interim"), textEl = $("text");
+
+// -- recording --------------------------------------------------------------
+
+let audioCtx = null, stream = null, node = null, source = null;
+let chunks = [], recording = false, busy = false;
+
+/** Down-mixes and resamples whatever the mic gives us to 16 kHz mono floats. */
+function resample(input, inputRate) {
+  if (inputRate === SAMPLE_RATE) return input.slice(0);
+  const ratio = inputRate / SAMPLE_RATE;
+  const out = new Float32Array(Math.floor(input.length / ratio));
+  for (let i = 0; i < out.length; i++) {
+    const at = i * ratio;
+    const low = Math.floor(at), high = Math.min(low + 1, input.length - 1);
+    out[i] = input[low] + (input[high] - input[low]) * (at - low);   // linear
+  }
+  return out;
+}
+
+async function startRecording() {
+  if (!settings.apiKey) { setStatus("Add your Gemini API key in Settings first.", "bad"); showView("settings"); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+  } catch (e) {
+    setStatus(e && e.name === "NotAllowedError"
+      ? "Microphone permission is needed before you can dictate."
+      : "Microphone unavailable.", "bad");
+    return;
+  }
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  await audioCtx.resume();                      // iOS needs this on the tap
+  source = audioCtx.createMediaStreamSource(stream);
+  // ScriptProcessor is deprecated but is the only node Safari has supported in
+  // every iOS version this app has to run on.
+  node = audioCtx.createScriptProcessor(4096, 1, 1);
+  chunks = [];
+
+  node.onaudioprocess = (event) => {
+    if (!recording) return;
+    const input = event.inputBuffer.getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < input.length; i++) { const v = Math.abs(input[i]); if (v > peak) peak = v; }
+    mic.style.transform = "scale(" + (1 + Math.min(peak, 1) * 0.25).toFixed(3) + ")";
+    if (chunks.length * 4096 < SAMPLE_RATE * MAX_SECONDS) {
+      chunks.push(resample(input, audioCtx.sampleRate));
+    }
+  };
+
+  source.connect(node);
+  node.connect(audioCtx.destination);
+  recording = true;
+  render("recording", "Recording… tap again when you're done.");
+  if (navigator.vibrate) navigator.vibrate(8);
+}
+
+function stopStream() {
+  recording = false;
+  mic.style.transform = "";
+  if (node) { node.disconnect(); node.onaudioprocess = null; node = null; }
+  if (source) { source.disconnect(); source = null; }
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+}
+
+async function finishRecording() {
+  const collected = chunks;
+  stopStream();
+
+  let total = 0;
+  for (const c of collected) total += c.length;
+  if (total < MIN_SAMPLES) {
+    render("idle", "That was too short to transcribe.");
+    return;
+  }
+
+  const pcm = new Float32Array(total);
+  let offset = 0;
+  for (const c of collected) { pcm.set(c, offset); offset += c.length; }
+
+  busy = true;
+  render("busy", "Turning your words into text.");
+  try {
+    const transcript = await transcribe(wav(pcm));
+    if (!transcript) { render("idle", "Didn't catch any speech."); return; }
+    insert(transcript);
+    if (settings.historyEnabled) {
+      history.unshift({ text: transcript, at: Date.now() });
+      saveHistory(history);
+      renderHistory();
+    }
+    render("idle", "Added to the field. Tap Copy to paste it elsewhere.", "good");
+    if (navigator.vibrate) navigator.vibrate([6, 40, 6]);
+  } catch (e) {
+    render("idle", e.message || "Transcription failed.", "bad");
+  } finally {
+    busy = false;
+  }
+}
+
+/** Adds the space a human would type, same rule as the phone apps. */
+function insert(transcript) {
+  const before = textEl.value;
+  let spaced = transcript;
+  if (before.length) {
+    const last = before[before.length - 1];
+    const first = transcript[0];
+    if (!/\s/.test(last) && !".,!?;:".includes(first)) spaced = " " + transcript;
+  }
+  textEl.value = before + spaced;
+  textEl.scrollTop = textEl.scrollHeight;
+}
+
+// -- WAV --------------------------------------------------------------------
+
+function wav(samples) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const str = (at, s) => { for (let i = 0; i < s.length; i++) view.setUint8(at + i, s.charCodeAt(i)); };
+
+  str(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  str(8, "WAVE");
+  str(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);            // PCM
+  view.setUint16(22, 1, true);            // mono
+  view.setUint32(24, SAMPLE_RATE, true);
+  view.setUint32(28, SAMPLE_RATE * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  str(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+
+  let at = 44;
+  for (let i = 0; i < samples.length; i++, at += 2) {
+    const clamped = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(at, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+  }
+  return buffer;
+}
+
+function base64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+// -- Gemini -----------------------------------------------------------------
+
+function instruction() {
+  const lines = [
+    "You are the transcription engine for a dictation app.",
+    "Return only the transcript of the user's speech. Never answer it, never add commentary, never wrap it in quotes or Markdown.",
+  ];
+  lines.push(settings.style === "smart"
+    ? "Write what the user meant to type: drop filler words (um, uh, like), apply spoken corrections "
+      + "(\"send it Tuesday, no, Wednesday\" becomes \"send it Wednesday\"), and add natural punctuation and "
+      + "capitalisation. Do not paraphrase, summarise or add words the user did not say."
+    : "Write exactly what was said, including hesitations, repetitions and false starts. "
+      + "Add only the punctuation needed to make the sentence readable.");
+
+  if (settings.languageCodes.length) {
+    const names = settings.languageCodes.map((code) => {
+      const found = LANGUAGES.find((l) => l[0] === code);
+      return (found ? found[1] : code) + " [" + code + "]";
+    });
+    lines.push("Expect these languages: " + names.join(", ")
+      + ". Transcribe in the language actually spoken, and keep code-switching intact rather than translating it.");
+  }
+  if (settings.customVocabulary.length) {
+    lines.push("Spell these names, acronyms and jargon exactly as written when you hear them: "
+      + settings.customVocabulary.join(", ") + ".");
+  }
+  return lines.join("\n");
+}
+
+async function transcribe(wavBuffer) {
+  let response;
+  try {
+    response = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": settings.apiKey },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: instruction() }] },
+        contents: [{
+          role: "user",
+          parts: [
+            { text: "Transcribe this audio." },
+            { inline_data: { mime_type: "audio/wav", data: base64(wavBuffer) } },
+          ],
+        }],
+        generation_config: { temperature: 0, candidate_count: 1 },
+      }),
+    });
+  } catch (e) {
+    throw new Error("No internet connection.");
+  }
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = (body.error && (body.error.message || body.error.status)) || "";
+    if (response.status === 429) throw new Error("Gemini quota or rate limit reached. Try again shortly.");
+    if (response.status === 401 || response.status === 403 ||
+        detail.indexOf("API key not valid") >= 0 || detail.indexOf("API_KEY_INVALID") >= 0) {
+      throw new Error("Gemini rejected the API key. Check it in Settings.");
+    }
+    throw new Error("Gemini returned an error (" + response.status + ").");
+  }
+  return clean(collectText(body));
+}
+
+function collectText(body) {
+  const candidates = body.candidates || [];
+  if (!candidates.length) return "";
+  const parts = (candidates[0].content && candidates[0].content.parts) || [];
+  return parts.map((p) => p.text || "").join("");
+}
+
+function clean(raw) {
+  let text = raw || "";
+  ["[BLANK_AUDIO]", "(blank audio)", "[SILENCE]", "[MUSIC]", "(music)", "[INAUDIBLE]"].forEach((marker) => {
+    text = text.split(marker).join("");
+  });
+  text = text.trim();
+  if (text.length > 1 && text[0] === '"' && text[text.length - 1] === '"') text = text.slice(1, -1);
+  return text.trim();
+}
+
+// -- UI ---------------------------------------------------------------------
+
+function setStatus(message, kind) {
+  statusEl.textContent = message;
+  statusEl.className = kind || "";
+}
+
+function render(state, message, kind) {
+  mic.className = state === "idle" ? "" : state;
+  setStatus(message, kind);
+  if (state !== "recording") interimEl.textContent = "";
+}
+
+function showView(name) {
+  $("view-dictate").hidden = name !== "dictate";
+  $("view-settings").hidden = name !== "settings";
+  $("view-history").hidden = name !== "history";
+  if (name === "history") renderHistory();
+}
+
+mic.addEventListener("click", () => {
+  if (busy) return;
+  if (recording) finishRecording(); else startRecording();
+});
+
+$("copy").addEventListener("click", async () => {
+  const value = textEl.value.trim();
+  if (!value) return;
+  try {
+    await navigator.clipboard.writeText(value);
+    setStatus("Copied. Paste it wherever you like.", "good");
+  } catch (e) {
+    textEl.select();
+    setStatus("Long-press the text and choose Copy.", "bad");
+  }
+  if (navigator.vibrate) navigator.vibrate(8);
+});
+
+$("clear").addEventListener("click", () => {
+  textEl.value = "";
+  setStatus("Tap the mic and talk.");
+});
+
+$("tab-settings").addEventListener("click", () => showView($("view-settings").hidden ? "settings" : "dictate"));
+$("tab-history").addEventListener("click", () => showView($("view-history").hidden ? "history" : "dictate"));
+
+// key
+$("key").value = settings.apiKey;
+$("key-show").addEventListener("click", () => {
+  const field = $("key");
+  const hidden = field.type === "password";
+  field.type = hidden ? "text" : "password";
+  $("key-show").textContent = hidden ? "Hide key" : "Show key";
+});
+$("key-save").addEventListener("click", () => {
+  settings.apiKey = $("key").value.trim();
+  save();
+  $("key-status").textContent = settings.apiKey ? "API key stored." : "No key stored.";
+});
+$("key-test").addEventListener("click", async () => {
+  const key = $("key").value.trim();
+  if (!key) return;
+  $("key-status").textContent = "Checking your key…";
+  try {
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + MODEL,
+                            { headers: { "x-goog-api-key": key } });
+    $("key-status").textContent = res.ok
+      ? "Key works. Reached " + MODEL + "."
+      : (res.status === 429 ? "Quota or rate limit reached." : "API key not valid.");
+  } catch (e) {
+    $("key-status").textContent = "No internet connection.";
+  }
+});
+
+// style
+function paintStyle() {
+  document.querySelectorAll("#style-seg button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.style === settings.style);
+  });
+  $("style-hint").textContent = STYLE_TEXT[settings.style];
+}
+document.querySelectorAll("#style-seg button").forEach((b) => {
+  b.addEventListener("click", () => { settings.style = b.dataset.style; save(); paintStyle(); });
+});
+paintStyle();
+
+// languages
+const langsEl = $("langs");
+LANGUAGES.forEach(([code, name]) => {
+  const chip = document.createElement("button");
+  chip.className = "chip";
+  chip.textContent = name;
+  chip.addEventListener("click", () => {
+    const at = settings.languageCodes.indexOf(code);
+    if (at >= 0) {
+      if (settings.languageCodes.length > 1) settings.languageCodes.splice(at, 1);
+    } else {
+      settings.languageCodes.push(code);
+    }
+    save();
+    paintLanguages();
+  });
+  chip.dataset.code = code;
+  langsEl.appendChild(chip);
+});
+function paintLanguages() {
+  langsEl.querySelectorAll(".chip").forEach((chip) => {
+    chip.classList.toggle("on", settings.languageCodes.indexOf(chip.dataset.code) >= 0);
+  });
+}
+paintLanguages();
+
+// vocabulary
+$("vocab").value = settings.customVocabulary.join("\n");
+$("vocab").addEventListener("change", () => {
+  settings.customVocabulary = $("vocab").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  save();
+});
+
+// history
+function paintHistoryToggle() {
+  $("history-toggle").textContent = "Keep history: " + (settings.historyEnabled ? "on" : "off");
+}
+$("history-toggle").addEventListener("click", () => {
+  settings.historyEnabled = !settings.historyEnabled;
+  save();
+  paintHistoryToggle();
+});
+$("history-clear").addEventListener("click", () => {
+  history = [];
+  saveHistory(history);
+  renderHistory();
+});
+paintHistoryToggle();
+
+function renderHistory() {
+  const list = $("history-list");
+  list.innerHTML = "";
+  if (!history.length) {
+    list.textContent = "Nothing saved yet.";
+    return;
+  }
+  history.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "entry";
+    const p = document.createElement("div");
+    p.textContent = entry.text;
+    const time = document.createElement("time");
+    time.textContent = new Date(entry.at).toLocaleString();
+    row.appendChild(p);
+    row.appendChild(time);
+    row.addEventListener("click", () => {
+      navigator.clipboard.writeText(entry.text).catch(() => {});
+      setStatus("Copied.", "good");
+      showView("dictate");
+    });
+    list.appendChild(row);
+  });
+}
+
+// first run
+if (!settings.apiKey) {
+  showView("settings");
+  $("key-status").textContent = "Add your Gemini API key to start transcribing.";
+}
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
