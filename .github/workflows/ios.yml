@@ -27,8 +27,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -switch /Applications/Xcode_16.2.app
+      # Pinning an Xcode older than the image's simulator runtimes makes actool
+      # fail with "No simulator runtime version ... available to use with
+      # iphonesimulator SDK", so take the newest Xcode the runner has.
+      - name: Select the newest Xcode
+        run: |
+          newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $newest"
+          sudo xcode-select -switch "$newest"
 
       - name: Show toolchain
         run: |
@@ -39,22 +45,9 @@ jobs:
         working-directory: ios
         run: python3 Tools/generate_xcodeproj.py
 
-      # Builds for the simulator first: it type-checks every line without
-      # needing a signing identity, so a compile error is reported here rather
-      # than hiding behind a provisioning failure.
-      - name: Build (simulator)
-        working-directory: ios
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -project VoiceAppV4.xcodeproj \
-            -scheme VoiceAppV4 \
-            -configuration Release \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/sim \
-            CODE_SIGNING_ALLOWED=NO \
-            build
-
+      # Everything is built for the device. A simulator pass would type-check
+      # the same code, but it drags in the simulator runtimes, and those are
+      # what broke the first green build on a hosted runner.
       - name: Archive (device, unsigned)
         working-directory: ios
         run: |
