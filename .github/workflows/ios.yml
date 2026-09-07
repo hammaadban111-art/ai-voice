@@ -111,7 +111,10 @@ jobs:
           EOF
           )
           if gh release view latest >/dev/null 2>&1; then
-            gh release edit latest --notes "$notes" --target "$GITHUB_SHA"
+            gh release edit latest \
+              --title "Voice App V4 — latest build" \
+              --notes "$notes" \
+              --target "$GITHUB_SHA"
             gh release upload latest \
               ios/build/VoiceAppV4-unsigned.ipa \
               android/VoiceAppV4-4.1.3.apk \
