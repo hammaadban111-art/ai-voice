@@ -1,12 +1,18 @@
-*.iml
-.gradle/
-.idea/
+# Xcode
 build/
-local.properties
-.cxx/
-.externalNativeBuild/
-captures/
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
 
-# Bundled at build time by the downloadWhisperModel Gradle task; too large for git.
-app/src/main/assets/models/*.bin
-app/src/main/assets/models/*.part
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc

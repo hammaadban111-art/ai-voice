@@ -1,87 +1,106 @@
-# AI Voice
+# Voice App V4
 
-Offline voice dictation for Android. Tap a floating mic button on top of any app,
-speak, and the transcript is typed into whatever text field you were using.
+Dictation that follows you into every app. Tap a mic, talk, and the cleaned-up
+text lands at your cursor — in a chat box, a search field, a code editor,
+wherever you were typing. Transcription runs on Google Gemini.
 
-Everything runs on the phone: [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
-compiled with the NDK, the GGML weights bundled inside the APK. No cloud API, no
-account, no network permission.
+Two builds live here:
 
-## How it works
+| | What | Where |
+| --- | --- | --- |
+| **Android** | The shipped app, ready to install | [`android/VoiceAppV4-4.1.3.apk`](android/VoiceAppV4-4.1.3.apk) |
+| **iOS** | A one-to-one replica, source to build in Xcode | [`ios/`](ios/) |
+
+## Android
+
+Download **[VoiceAppV4-4.1.3.apk](android/VoiceAppV4-4.1.3.apk)** (2.9 MB) and
+open it on the phone. Install instructions and the permission walkthrough are in
+[`android/README.md`](android/README.md).
+
+- Package `com.hammaad.voiceappv4`, version 4.1.3, arm64/arm/x86.
+- A floating bubble appears when you focus a text field, an accessibility
+  service inserts the transcript at the caret.
+
+## iOS
+
+Android lets an app draw a bubble over other apps and type into them through an
+accessibility service. iOS allows neither. The sanctioned way to put text into
+someone else's text field is a **custom keyboard extension** — it shows up in
+every app, it can see the text around the cursor, and it inserts at the caret.
+So the bubble becomes a mic key on the keyboard, and everything behind it is the
+same design as the Android build.
 
 ```
-overlay tap ──► AudioRecord (16 kHz mono) ──► whisper.cpp (JNI, arm64)
-                                                      │
-                              AccessibilityService ◄──┘  ACTION_SET_TEXT
-                                                          (clipboard + paste fallback)
+mic key tap ──► AVAudioEngine (16 kHz mono PCM)
+                      │
+                      ├─► live socket  wss://…/v1beta/interactions
+                      │      gemini-3.5-transcribe-live   (interim words as you speak)
+                      │
+                      └─► batch POST   …/v1beta/models/gemini-3.5-transcribe:generateContent
+                             (fallback when the socket dies)
+                                        │
+              UITextDocumentProxy ◄──────┘  insertText at the cursor
 ```
 
-| Piece | File |
-| --- | --- |
-| JNI bridge to whisper.cpp | `app/src/main/cpp/whisper_jni.cpp` |
-| Native build wiring | `app/src/main/cpp/CMakeLists.txt` |
-| Native context lifecycle | `app/src/main/java/com/aivoice/flow/whisper/WhisperEngine.kt` |
-| Model unpacking from APK assets | `app/src/main/java/com/aivoice/flow/whisper/ModelStore.kt` |
-| Microphone capture | `app/src/main/java/com/aivoice/flow/audio/AudioRecorder.kt` |
-| Floating button | `app/src/main/java/com/aivoice/flow/service/OverlayBubble.kt` |
-| Dictation loop (foreground service) | `app/src/main/java/com/aivoice/flow/service/DictationService.kt` |
-| Text insertion | `app/src/main/java/com/aivoice/flow/service/TextInjector.kt` |
-| Setup / permissions screen | `app/src/main/java/com/aivoice/flow/ui/MainActivity.kt` |
+Build it with Xcode 16 on any Mac; [`docs/INSTALL-ios.md`](docs/INSTALL-ios.md)
+covers signing and getting it onto a phone, including the free-Apple-ID route
+that needs no paid developer account.
 
-## Using it
+### Feature parity
 
-1. Install the APK and open **AI Voice**.
-2. The bundled speech model unpacks itself on first launch (~181 MiB, one time).
-3. Grant **Microphone** and **Display over other apps**.
-4. Turn on the **AI Voice** accessibility service. Android does not allow an app to
-   grant this itself, so the button opens Settings for you. Without it the app still
-   works — transcripts land on the clipboard instead of being typed.
-5. Tap **Start floating mic**, switch to any app, tap the bubble, speak, tap again.
+| Feature | Android | iOS | Notes |
+| --- | --- | --- | --- |
+| Gemini live transcription | ✅ | ✅ | Same model id, same socket endpoint |
+| Batch fallback model | ✅ | ✅ | Auto-retries a dropped live session |
+| Insert at cursor in any app | ✅ accessibility service | ✅ keyboard extension | |
+| Mic button over other apps | ✅ floating bubble | ✅ mic key on the keyboard | iOS forbids overlays |
+| Tap to record / hold to talk | ✅ | ✅ | |
+| Smart vs Raw style | ✅ | ✅ | Identical prompt wording |
+| Contextual dictation | ✅ | ✅ | Text around the cursor; iOS cannot see the app's name |
+| Custom vocabulary | ✅ | ✅ | |
+| Multi-language selection | ✅ | ✅ | Same 21 locales |
+| Transcript history | ✅ | ✅ | Shared App Group file |
+| Pause / snooze | ✅ | ✅ | |
+| Encrypted API key | ✅ AndroidKeyStore | ✅ Keychain, device-bound | |
+| Diagnostics screen | ✅ | ✅ | iOS reports Full Access instead of accessibility |
+| Skip in chosen apps | ✅ excluded apps | ❌ | A keyboard extension is never told which app is hosting it |
+| Start on boot | ✅ | ❌ | iOS has no equivalent; the keyboard is always available instead |
 
-The bubble is draggable, and a long press cycles the dictation language.
+Everything except the last two rows behaves the same on both phones.
 
-### Language
+### Layout
 
-`small` multilingual weights (`ggml-small-q5_1`, 5-bit quantised) — chosen over
-`base` because Hindi and Urdu accuracy falls off sharply on the smaller model.
-
-Auto-detect is the default. Hindi and Urdu share most of their vocabulary and
-differ mainly in script, so whisper's detector flips between them on short
-utterances; pin the language in the app (or long-press the bubble) when dictating
-in either.
-
-## Building
-
-Requires JDK 17, the Android SDK, and NDK `27.2.12479018`.
-
-```bash
-git clone --recursive https://github.com/hammaadban111-art/ai-voice
-cd ai-voice
-./gradlew :app:assembleRelease
+```
+ios/
+  Shared/      the whole engine — compiled into both targets
+    DictationEngine.swift    tap → mic → Gemini → text, with the fallback path
+    AudioRecorder.swift      AVAudioEngine → 16 kHz mono PCM, chunked for live
+    GeminiLiveSession.swift  streaming socket, interim + final transcripts
+    GeminiClient.swift       batch request, key validation, response cleanup
+    PromptBuilder.swift      the instruction both paths send
+    SettingsStore.swift      App Group settings, keys mirrored from Android
+    ApiKeyStore.swift        Keychain, shared with the extension
+    TranscriptStore.swift    history file in the App Group container
+    MicKeyView.swift         the mic key itself
+  App/         the container app: onboarding, settings, history, diagnostics
+  Keyboard/    the keyboard extension
+  Tools/       project + icon generators
 ```
 
-The `downloadWhisperModel` Gradle task fetches the weights into
-`app/src/main/assets/models/` on the first build (they are too large for git) and
-the APK is then fully self-contained. CI does the same in
-`.github/workflows/build-apk.yml`, which publishes the APK as a release asset.
+### Setup on the phone
 
-Build notes:
+1. Build and install, then open **Voice App V4**.
+2. Paste a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey).
+3. Allow the microphone.
+4. Settings › General › Keyboard › Keyboards › **Add New Keyboard** › Voice App V4,
+   then tap it again and turn on **Allow Full Access** — without it the keyboard
+   cannot use the microphone or reach the network.
+5. In any app, tap a text field, switch to the Voice App V4 keyboard with the
+   globe key, tap the mic, talk, tap again.
 
-- arm64 only, `-march=armv8.2-a+fp16+dotprod`. The fp16 and dot-product
-  instructions are what make the quantised matmuls fast enough to feel
-  interactive; they exist on every Cortex-A75-or-later phone.
-- The native library is linked with `-Wl,-z,max-page-size=16384` for the 16 KiB
-  page devices Android 15 introduced.
-- Model assets are stored uncompressed (`noCompress "bin"`) so the first-run copy
-  out of the APK is a byte copy rather than a 190 MB inflate.
-- Release builds are signed with the checked-in `keystore/aivoice-sideload.jks`.
-  It is intentionally not a secret: a stable signature is what lets one release
-  install as an update over the previous one, which a per-build debug key
-  cannot do. It proves nothing about authorship — swap in a keystore from CI
-  secrets before distributing the app anywhere that matters.
-- `versionCode` comes from `GITHUB_RUN_NUMBER`, so each published release
-  outranks the last.
+## Privacy
 
-## Licence
-
-whisper.cpp is vendored as a submodule under its own MIT licence.
+Only the audio you dictate leaves the phone, and only to Google Gemini. The
+keyboard reads the text immediately around your cursor to match its tone, and
+nothing else about the screen. The API key is stored in the device keychain and
+never leaves the device. Password and PIN fields are skipped outright.
