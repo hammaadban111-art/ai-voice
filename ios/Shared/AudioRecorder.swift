@@ -45,22 +45,14 @@ final class AudioRecorder {
 
     // -- permission --------------------------------------------------------
 
+    // The deployment target is iOS 17, so the AVAudioSession spellings of these
+    // two are unreachable as well as deprecated.
     static func hasMicPermission() -> Bool {
-        if #available(iOS 17.0, *) {
-            return AVAudioApplication.shared.recordPermission == .granted
-        }
-        return AVAudioSession.sharedInstance().recordPermission == .granted
+        AVAudioApplication.shared.recordPermission == .granted
     }
 
     static func requestMicPermission() async -> Bool {
-        if #available(iOS 17.0, *) {
-            return await AVAudioApplication.requestRecordPermission()
-        }
-        return await withCheckedContinuation { continuation in
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                continuation.resume(returning: granted)
-            }
-        }
+        await AVAudioApplication.requestRecordPermission()
     }
 
     // -- capture -----------------------------------------------------------
@@ -188,7 +180,9 @@ extension Data {
         let blockAlign = UInt16(channels * bitsPerSample / 8)
 
         func append<T: FixedWidthInteger>(_ value: T) {
-            withUnsafeBytes(of: value.littleEndian) { header.append(contentsOf: $0) }
+            // Spelled out: unqualified, this resolves to Data's own
+            // withUnsafeBytes rather than the global one.
+            Swift.withUnsafeBytes(of: value.littleEndian) { header.append(contentsOf: $0) }
         }
 
         header.append(contentsOf: Array("RIFF".utf8))

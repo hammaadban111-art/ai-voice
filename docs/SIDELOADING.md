@@ -1,0 +1,83 @@
+# Signing and installing the iOS app
+
+CI builds an **unsigned `.ipa`** on every push. Unsigned is deliberate: the
+signature depends on whose phone the app is going on, and every tool below takes
+a plain `.ipa` and signs it with your own identity.
+
+## Getting the .ipa
+
+1. Repo → **Actions** → **Build iOS app** → newest run.
+2. Scroll to **Artifacts** → download **VoiceAppV4-unsigned-ipa**.
+3. Unzip it — GitHub wraps artifacts in a zip, so you get
+   `VoiceAppV4-unsigned.ipa` inside.
+
+Nothing else needs a Mac from here on, unless the tool you pick does.
+
+## Which signer
+
+ESign, which used to be the obvious answer, was discontinued in April 2025. The
+current field:
+
+| Tool | Cost | Computer needed | App lifetime | Good for |
+| --- | --- | --- | --- | --- |
+| **SideStore** | free | setup only, then untethered | 7 days, auto-refreshes on-device over Wi-Fi | The best free answer for a phone that is not yours to babysit |
+| **AltStore Classic** | free | yes, every 7 days | 7 days | Most documentation, safest reputation, easiest first time |
+| **Sideloadly** | free | yes (Windows or Mac) | 7 days | One-shot installs, least setup |
+| **Feather** | free | no | depends on the certificate you feed it | The open-source successor to ESign |
+| **KSign** | free | no | depends on certificate | Other ESign replacement |
+| **TrollStore** | free | no | **permanent, no certificate at all** | Only works on iOS 17.0 and below — the CoreTrust bug it uses was patched in 17.0.1 |
+| **Apple Developer Program** | $99/yr | Mac once | 1 year, or TestFlight | The only route with no maintenance |
+
+Two things worth knowing before choosing:
+
+- **7 days is an Apple limit, not a tool limit.** Any free Apple ID signature
+  expires after a week. SideStore is the only free option that renews it without
+  a computer in the room.
+- **Paid "signing services"** that sell certificates (Signulous and friends) get
+  their certificates revoked by Apple in batches, taking every app installed with
+  them down at once. Cheaper than $99/yr right up until the morning it stops
+  working.
+
+## The free route that survives being handed to someone else
+
+**SideStore**, because it refreshes itself:
+
+1. On a computer once: install SideStore's pairing tool, generate a pairing file
+   for the phone, and put SideStore on it (their docs walk through the current
+   steps — the mechanism changes often enough that copying it here would go
+   stale).
+2. On the phone: open SideStore, sign in with an Apple ID, tap **+**, pick
+   `VoiceAppV4-unsigned.ipa`.
+3. Enable **background refresh** in SideStore so it re-signs before the seven
+   days run out. As long as the phone sees Wi-Fi about once a week, the app
+   keeps working and nobody has to do anything.
+
+Three-app limit: a free Apple ID can hold three sideloaded apps at a time, and
+this app plus its keyboard extension counts as one.
+
+## The route with no maintenance
+
+Pay Apple $99/year, then **TestFlight**:
+
+1. Add the app in App Store Connect, upload a signed build from Xcode.
+2. Invite by email or share a public TestFlight link.
+3. She installs TestFlight once, taps the link, and gets the app. Builds last
+   90 days, and updates arrive as normal app updates.
+
+This is the only configuration where nothing expires under her, and it is what
+to do if the app turns out to be something she uses daily.
+
+## After installing, either way
+
+1. Open **Voice App V4**, paste a Gemini API key.
+2. Allow the microphone.
+3. Settings › General › Keyboard › Keyboards › **Add New Keyboard** › Voice App V4.
+4. Tap it again → **Allow Full Access**. Without it the keyboard has no
+   microphone and no network, which is the whole app.
+
+## If you would rather not sign anything
+
+[`../web`](../web) is the same app as a web page: open the link in Safari, Add
+to Home Screen, and it never expires because there is nothing to sign. It
+transcribes identically; the only thing it cannot do is type into another app,
+so it ends with Copy and paste.

@@ -105,7 +105,9 @@ final class KeyboardViewController: UIInputViewController {
     /// Password and PIN fields are off limits, matching the Android bubble.
     private var isSensitiveField: Bool {
         let proxy = textDocumentProxy
-        let secure = proxy.isSecureTextEntry
+        // A proxy that does not report the trait is treated as an ordinary
+        // field; iOS hides custom keyboards from real secure fields anyway.
+        let secure = proxy.isSecureTextEntry ?? false
         let type: TextInsertion.UIKeyboardTypeLike
         switch proxy.keyboardType {
         case .some(.numberPad): type = .numberPad
