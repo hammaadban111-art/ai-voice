@@ -1,0 +1,44 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Adaptive-safe charcoal field; the vector remains the canonical drawable used by the app and notification. -->
+    <path
+        android:fillColor="#161B1A"
+        android:pathData="M18,0h72c9.941,0 18,8.059 18,18v72c0,9.941 -8.059,18 -18,18H18C8.059,108 0,99.941 0,90V18C0,8.059 8.059,0 18,0z" />
+    <path
+        android:fillColor="#22302C"
+        android:fillAlpha="0.92"
+        android:pathData="M54,8a46,46 0,1 0,0 92a46,46 0,1 0,0 -92" />
+
+    <!-- Small signal bars keep the microphone/waveform cue legible without adding text. -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#F7FAF4"
+        android:strokeAlpha="0.9"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M38,24v5 M46,20v9 M54,16v13 M62,20v9 M70,24v5" />
+
+    <!-- Lime V is the primary mark and stays inside the launcher safe area. -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#C8F24A"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M29,34 L54,79 L79,34" />
+
+    <!-- Minimal white microphone signal nested in the V. -->
+    <path
+        android:fillColor="#F7FAF4"
+        android:pathData="M50,46c0,-2.209 1.791,-4 4,-4s4,1.791 4,4v9c0,2.209 -1.791,4 -4,4s-4,-1.791 -4,-4z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#F7FAF4"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M45,54v1c0,4.971 4.029,9 9,9s9,-4.029 9,-9v-1 M54,64v7 M49,71h10" />
+</vector>

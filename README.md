@@ -1,87 +1,82 @@
-# AI Voice
+# Voxta 2.0
 
-Offline voice dictation for Android. Tap a floating mic button on top of any app,
-speak, and the transcript is typed into whatever text field you were using.
+Voxta 2.0 is a native Android 13+ contextual voice-dictation app (`com.hammaad.voiceappv4`). It uses Jetpack Compose for onboarding, Home, Settings, and the optional test; an `AccessibilityService` for focused-field detection and cursor-safe insertion; `AudioRecord` for temporary 16 kHz mono PCM; and the current Gemini transcription APIs.
 
-Everything runs on the phone: [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
-compiled with the NDK, the GGML weights bundled inside the APK. No cloud API, no
-account, no network permission.
+## What is implemented
 
-## How it works
+- Ordered setup: microphone/listening notification, encrypted Gemini API key, overlay and Accessibility access, contextual bubble enablement, then an optional real test.
+- Persisted onboarding and settings. A completed setup restarts on Home; Home rechecks the real permission state.
+- The Home dashboard reports `TOTAL WORDS` and `DICTATIONS TODAY` from the local transcript ledger.
+- Bubble only when the feature is enabled, not snoozed, overlay access is granted, an allowed editable field is focused, and an input-method window is active.
+- Password input variations, Android system surfaces, Voxta itself, and user-excluded packages are filtered.
+- Draggable bubble with edge snap; tap recording; visible live microphone activity; Cancel and Done; long-press/release push-to-talk.
+- Ephemeral `AudioRecord` capture: PCM stays in memory, is never written to disk, and is cleared after use. A 10-minute safety limit prevents unbounded memory growth.
+- Gemini Live WebSocket model `gemini-3.5-transcribe-live`, manual activity start/end, raw 16-bit PCM at 16 kHz, interim/final input transcription, Smart/Verbatim, automatic/manual language, and custom vocabulary.
+- If Live fails after audio exists, a WAV is uploaded through Gemini's resumable Files API and transcribed by `gemini-3.5-transcribe` through the Interactions API. The temporary remote file is deleted in `finally`; local buffers are cleared.
+- Selection-aware text replacement preserves existing text and restores the cursor after insertion. If `ACTION_SET_TEXT` fails, the transcript remains visible with a Paste action (and remains on the clipboard if direct paste is also rejected).
+- Optional on-device transcript-only history and local diagnostics. Neither stores audio, API keys, accessibility screen contents, analytics, identifiers, or Firebase data.
+- Explicit states for missing/revoked microphone access, invalid key/API rejection, quota/server failures, offline/connection failures, empty audio, and insertion failure.
 
-```
-overlay tap ──► AudioRecord (16 kHz mono) ──► whisper.cpp (JNI, arm64)
-                                                      │
-                              AccessibilityService ◄──┘  ACTION_SET_TEXT
-                                                          (clipboard + paste fallback)
-```
+## Build
 
-| Piece | File |
-| --- | --- |
-| JNI bridge to whisper.cpp | `app/src/main/cpp/whisper_jni.cpp` |
-| Native build wiring | `app/src/main/cpp/CMakeLists.txt` |
-| Native context lifecycle | `app/src/main/java/com/aivoice/flow/whisper/WhisperEngine.kt` |
-| Model unpacking from APK assets | `app/src/main/java/com/aivoice/flow/whisper/ModelStore.kt` |
-| Microphone capture | `app/src/main/java/com/aivoice/flow/audio/AudioRecorder.kt` |
-| Floating button | `app/src/main/java/com/aivoice/flow/service/OverlayBubble.kt` |
-| Dictation loop (foreground service) | `app/src/main/java/com/aivoice/flow/service/DictationService.kt` |
-| Text insertion | `app/src/main/java/com/aivoice/flow/service/TextInjector.kt` |
-| Setup / permissions screen | `app/src/main/java/com/aivoice/flow/ui/MainActivity.kt` |
+Requirements: JDK 17 and an Android SDK containing platform/build-tools 36. This checkout's `local.properties` points to the Homebrew SDK at `/opt/homebrew/share/android-commandlinetools`; change that path if building elsewhere.
 
-## Using it
-
-1. Install the APK and open **AI Voice**.
-2. The bundled speech model unpacks itself on first launch (~181 MiB, one time).
-3. Grant **Microphone** and **Display over other apps**.
-4. Turn on the **AI Voice** accessibility service. Android does not allow an app to
-   grant this itself, so the button opens Settings for you. Without it the app still
-   works — transcripts land on the clipboard instead of being typed.
-5. Tap **Start floating mic**, switch to any app, tap the bubble, speak, tap again.
-
-The bubble is draggable, and a long press cycles the dictation language.
-
-### Language
-
-`small` multilingual weights (`ggml-small-q5_1`, 5-bit quantised) — chosen over
-`base` because Hindi and Urdu accuracy falls off sharply on the smaller model.
-
-Auto-detect is the default. Hindi and Urdu share most of their vocabulary and
-differ mainly in script, so whisper's detector flips between them on short
-utterances; pin the language in the app (or long-press the bubble) when dictating
-in either.
-
-## Building
-
-Requires JDK 17, the Android SDK, and NDK `27.2.12479018`.
-
-```bash
-git clone --recursive https://github.com/hammaadban111-art/ai-voice
-cd ai-voice
-./gradlew :app:assembleRelease
+```sh
+./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
-The `downloadWhisperModel` Gradle task fetches the weights into
-`app/src/main/assets/models/` on the first build (they are too large for git) and
-the APK is then fully self-contained. CI does the same in
-`.github/workflows/build-apk.yml`, which publishes the APK as a release asset.
+Voxta 2.0 debug APK: `app/build/outputs/apk/debug/app-debug.apk`
 
-Build notes:
+Install on a connected device:
 
-- arm64 only, `-march=armv8.2-a+fp16+dotprod`. The fp16 and dot-product
-  instructions are what make the quantised matmuls fast enough to feel
-  interactive; they exist on every Cortex-A75-or-later phone.
-- The native library is linked with `-Wl,-z,max-page-size=16384` for the 16 KiB
-  page devices Android 15 introduced.
-- Model assets are stored uncompressed (`noCompress "bin"`) so the first-run copy
-  out of the APK is a byte copy rather than a 190 MB inflate.
-- Release builds are signed with the checked-in `keystore/aivoice-sideload.jks`.
-  It is intentionally not a secret: a stable signature is what lets one release
-  install as an update over the previous one, which a per-build debug key
-  cannot do. It proves nothing about authorship — swap in a keystore from CI
-  secrets before distributing the app anywhere that matters.
-- `versionCode` comes from `GITHUB_RUN_NUMBER`, so each published release
-  outranks the last.
+```sh
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
 
-## Licence
+The debug APK uses Android's debug signing key. For personal long-term use, create and protect a release keystore and configure release signing before building `assembleRelease`.
 
-whisper.cpp is vendored as a submodule under its own MIT licence.
+## Install and setup on OnePlus / OxygenOS
+
+1. Copy the APK to the phone, open it, and permit installation from that file manager/browser when Android asks.
+2. Open Voxta. Allow microphone access and the active-dictation notification.
+3. Enter your own Gemini API key. The app has no bundled key. The value is encrypted using an AES-GCM key held by Android Keystore and is excluded from backup.
+4. Open **Appear over other apps** and allow Voxta.
+5. Open **Accessibility**, select Voxta, review the narrow purpose statement, and enable it.
+6. Enable the contextual bubble and finish setup. The optional dictation test can be skipped.
+
+If a sideloaded build shows **Restricted setting**, go to **Settings → Apps → App management → Voxta**, open the three-dot menu, choose **Allow restricted settings**, then return to Accessibility and enable the service. OxygenOS labels vary by release. If the service is later stopped, set Voxta's battery use to allow background activity / do not optimize, and confirm overlay and Accessibility access again. Do not disable system security globally.
+
+## Permission and failure recovery
+
+- Bubble never appears: confirm Home says ready, the bubble is enabled/not snoozed, overlay and Accessibility access remain on, the app package is not excluded, and the keyboard is visible in a non-password editable field.
+- Microphone revoked/in use: restore microphone permission, close any app currently holding the microphone, then retry.
+- Invalid key or quota: replace the key under Settings and use **Test connection**. Google project quota/billing is controlled outside this app.
+- Offline/lost connection: captured audio is retained only long enough to attempt the batch fallback. If both routes fail, it is discarded and never queued to disk.
+- Insertion failure: keep the original field focused and tap **Paste**. If the target app blocks accessibility paste, the transcript is still on Android's clipboard for manual paste.
+- Accessibility stopped after an OxygenOS update/reboot: reopen the system Accessibility page and re-enable Voxta; then recheck battery/background restrictions.
+
+## Manual device acceptance checklist
+
+- [ ] Fresh install opens onboarding and enforces microphone → key → bubble/accessibility order.
+- [ ] Finish without running the optional test; force-stop/reopen and confirm Home opens directly.
+- [ ] Home shows `TOTAL WORDS` and `DICTATIONS TODAY`; verify both update after a successful dictation and persist after reopening.
+- [ ] Home screen/launcher shows no bubble.
+- [ ] WhatsApp (or another target app) shows no bubble before focusing a text field.
+- [ ] Focusing a normal message field and opening the keyboard shows the bubble.
+- [ ] Dragging snaps the bubble to an edge and the location survives hide/show.
+- [ ] Tap starts actual recording immediately; notification and animated microphone level are visible.
+- [ ] Cancel stops capture and inserts nothing.
+- [ ] Done produces Gemini text and inserts it at the current cursor/selection without deleting surrounding text.
+- [ ] Smart mode resolves fillers/corrections; Verbatim preserves spoken wording.
+- [ ] Long-press starts push-to-talk and release finishes it.
+- [ ] Closing the keyboard, leaving the field, going Home, or opening a password/PIN field hides/prevents the bubble.
+- [ ] Excluded package, snooze/resume, disable/re-enable, history, and diagnostics behave as configured.
+- [ ] Revoke each permission and verify Home/error recovery does not crash.
+- [ ] Disconnect network and exhaust/restrict quota to verify clear fallback/error messaging.
+- [ ] Force an insertion-hostile field and verify transcript + Paste fallback.
+
+## Verification boundary
+
+Local verification proves compilation, unit-tested protocol/field/insertion/WAV logic, lint completion, APK packaging, and emulator installation/launch when recorded in the handoff. It does **not** prove real OnePlus/OxygenOS background behavior, WhatsApp compatibility, hardware microphone levels, a user's Gemini account/key/quota, live network transcription, or third-party cursor insertion. Those require the manual checklist on the intended phone and are intentionally not claimed from a desktop build.
+
+Current Gemini reference used by the implementation: [Live transcription](https://ai.google.dev/gemini-api/docs/live-api/live-transcribe), [audio transcription](https://ai.google.dev/gemini-api/docs/transcribe), and [Live WebSocket API](https://ai.google.dev/api/live).
